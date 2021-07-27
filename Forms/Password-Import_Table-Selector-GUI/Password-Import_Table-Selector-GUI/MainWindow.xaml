@@ -1,0 +1,21 @@
+﻿<Window x:Class="Password_Import_Table_Selector_GUI.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:Password_Import_Table_Selector_GUI"
+        mc:Ignorable="d"
+        Title="Select a Table to import" Height="464.665" Width="979.148">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="163*"/>
+            <ColumnDefinition Width="233*"/>
+        </Grid.ColumnDefinitions>
+        <ListBox x:Name="lstTableSelection" HorizontalAlignment="Left" Height="100" Margin="23,60,0,0" VerticalAlignment="Top" Width="377" Grid.ColumnSpan="2"/>
+        <Label Content="Tables by Name:&#xD;&#xA;" HorizontalAlignment="Left" Margin="23,29,0,0" VerticalAlignment="Top" Width="120" Height="26"/>
+        <Button x:Name="btnSave" Content="Select &amp; Continue" Margin="0,0,10,10" RenderTransformOrigin="1.402,-0.599" Grid.Column="1" HorizontalAlignment="Right" Width="120" Height="27" VerticalAlignment="Bottom"/>
+        <Label Content="Example:" HorizontalAlignment="Left" Margin="23,183,0,0" VerticalAlignment="Top" Width="120"/>
+        <WebBrowser x:Name="webExample" Margin="23,214,10,50" Grid.ColumnSpan="2"/>
+
+    </Grid>
+</Window>

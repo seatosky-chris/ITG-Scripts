@@ -1,0 +1,21 @@
+﻿<Window x:Class="ManualMatching.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:ManualMatching"
+        mc:Ignorable="d"
+        Title="Match not found. Manually match password to asset." Height="252" Width="468">
+    <Grid>
+        <Label Content="No match was found for the password named:" HorizontalAlignment="Left" Margin="10,10,0,0" VerticalAlignment="Top"/>
+        <Label x:Name="lblPasswordName" Content="PasswordName" HorizontalAlignment="Left" Margin="259,10,0,0" VerticalAlignment="Top" FontWeight="Bold"/>
+        <Label Content="Please manually choose the asset to embed this password in." HorizontalAlignment="Left" Margin="10,36,0,0" VerticalAlignment="Top"/>
+        <Label Content="Or, choose Ignore to skip uploading this password." HorizontalAlignment="Left" Margin="10,62,0,0" VerticalAlignment="Top"/>
+        <Label x:Name="lblMatchingNotes" Content="MatchingNotes" HorizontalAlignment="Left" Margin="107,88,0,0" VerticalAlignment="Top"/>
+        <Label Content="Matching Data:" HorizontalAlignment="Left" Margin="10,88,0,0" VerticalAlignment="Top" FontWeight="Bold"/>
+        <ComboBox x:Name="cmbMatch" HorizontalAlignment="Left" Margin="10,129,0,0" VerticalAlignment="Top" Width="346" IsEditable="True" IsTextSearchEnabled="False"/>
+        <Button x:Name="btnIgnore" Content="Ignore" HorizontalAlignment="Left" Margin="226,177,0,0" VerticalAlignment="Top" Cursor="" Height="28" Width="54"/>
+        <Button x:Name="btnSave" Content="Save" HorizontalAlignment="Left" Margin="300,177,0,0" VerticalAlignment="Top" Height="28" Width="56"/>
+
+    </Grid>
+</Window>
