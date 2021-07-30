@@ -327,7 +327,7 @@ if ($Table) {
 			continue; # skip header row
 		}
 
-		$Password = $Row.cells[$PasswordsColumn].innerText
+		$Password = $Row.cells[$PasswordsColumn].innerText.Trim()
 		$Username = ""
 		if ($UsernamesColumn) {
 			$Username = $Row.cells[$UsernamesColumn].innerText
@@ -590,6 +590,10 @@ if ($Table) {
 				$RelatedItemsBody.attributes.'notes' = 'Password is for this configuration.'
 			}
 			$RelatedItems[$PasswordAssetBody.attributes.name] = $RelatedItemsBody
+		}
+
+		if ($PasswordInfo.Password -match "\s") {
+			Write-Host "The password for '$PasswordName' contains white space and is likely 2 different passwords. Please review and fix this manually." -ForegroundColor Red
 		}
 
 		$ITGCreatePasswords += $PasswordAssetBody
