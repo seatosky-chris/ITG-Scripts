@@ -179,7 +179,7 @@ if (($Tables | Measure-Object).Count -gt 1) {
 
 	$Form.ShowDialog() | out-null
 } else {
-	$Table = $Tables
+	$Table = $Tables[0]
 }
 
 # A table was selected (or only one exists), lets parse it
