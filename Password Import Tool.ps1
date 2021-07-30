@@ -123,7 +123,7 @@ $var_lstSelectOptions.Add_SelectionChanged({
 })
 
 $var_btnSave.Add_Click({
-	Write-Host "Importing type '$($ImportType.Name)' selected." -ForegroundColor Yellow
+	Write-Host "Import type '$($ImportType.Name)' selected." -ForegroundColor Yellow
 	$Form.Close()
 })
 
