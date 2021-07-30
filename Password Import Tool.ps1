@@ -609,7 +609,21 @@ if ($Table) {
 		}} |
 			Sort-Object -Property name | Out-GridView -Title "Passwords Collected. Please Review." -PassThru
 		Write-Host "Uploading passwords..."
-		$Response = New-ITGluePasswords -organization_id $orgID -data $ITGCreatePasswords
+		if (($ITGCreatePasswords | Measure-Object).Count -gt 60) {
+			# if more than 60 passwords, upload in batch of 50 ($Batch)
+			$Batch = 50
+			$Response = $null
+			for ($i = 0; $i -lt [Math]::Ceiling(($ITGCreatePasswords | Measure-Object).Count / $Batch); $i++) {
+				$ThisResponse = New-ITGluePasswords -organization_id $orgID -data ($ITGCreatePasswords | Select-Object -Skip ($i*$Batch) -First $Batch)
+				if ($Response) {
+					$Response.data += $ThisResponse.data
+				} else {
+					$Response = $ThisResponse
+				}
+			}
+		} else {
+			$Response = New-ITGluePasswords -organization_id $orgID -data $ITGCreatePasswords
+		}
 		Write-Host "Passwords uploaded!" -ForegroundColor Green
 
 		if ($RelatedItems) {
