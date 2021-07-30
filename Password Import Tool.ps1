@@ -322,8 +322,12 @@ if ($Table) {
 	$Length = $Table.rows.length 
 	for ($i = 1; $i -lt $Length; $i++) {
 		$Row = $Table.rows[$i]
-		$Password = $Row.cells[$PasswordsColumn].innerText
 
+		if ($Row.cells[0].innerText -eq $Headers[0] -and $Row.cells[1].innerText -eq $Headers[1]) {
+			continue; # skip header row
+		}
+
+		$Password = $Row.cells[$PasswordsColumn].innerText
 		$Username = ""
 		if ($UsernamesColumn) {
 			$Username = $Row.cells[$UsernamesColumn].innerText
