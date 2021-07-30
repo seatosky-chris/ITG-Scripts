@@ -621,7 +621,7 @@ if ($Table) {
 	
 	if ($ITGCreatePasswords) {
 		$ITGCreatePasswords.attributes | Select-Object -Property @{Name="name"; E={$_.name}}, @{Name="username"; E={$_.username}}, @{Name="password"; E={$_.password}}, @{Name = "matched resource name"; E={
-			if ($_."resource-name") { $_."resource-name" } elseif ($RelatedItems[$_.name]) { $RelatedItems[$_.name].attributes.'destination-name' }
+			if ($_."resource-name") { $_."resource-name" } elseif ($RelatedItems[$_.name -replace '[\W]', '']) { $RelatedItems[$_.name -replace '[\W]', ''].attributes.'destination-name' }
 		}} |
 			Sort-Object -Property name | Out-GridView -Title "Passwords Collected. Please Review." -PassThru
 		Write-Host "Uploading passwords..."
