@@ -8,25 +8,27 @@ $OverwritePasswords = $false # If a password already exists in ITG, update it an
 $SelectFormPath = ".\Forms\SelectForm\SelectForm\MainWindow.xaml"
 
 <# .SYNOPSIS
-		These are the password types.
-	.PARAMETER Name
-		Name is the label used for naming the password in ITG.
-	.PARAMETER SelectLabel
-		SelectLabel is the label used for the select box here in this script.
-	.PARAMETER Category
-		Category is the Password category associated with this type in ITG.
-	.PARAMETER Embedded
-		If this password should be embedded to other assets, include this here. Otherwise false. Options: "Configuration", "Contact", $false
-	#>
+	These are the password types.
+.PARAMETER Name
+	Name is the label used for naming the password in ITG.
+.PARAMETER SelectLabel
+	SelectLabel is the label used for the select box here in this script.
+.PARAMETER Category
+	Category is the Password category associated with this type in ITG.
+.PARAMETER Embedded
+	If this password should be embedded to other assets, include this here. Otherwise false. Options: "Configuration", "Contact", $false
+.PARAMETER Linked
+	An optional parameter, can be used instead of the Embedded param. If used it will link to an asset (just like with embedded) but will create a general password and make the link as a related item. Options: "Configuration", "Contact", $false
+#>
 $ImportTypes = @(
 	@{ "Name" = "Local Admin"; "SelectLabel" = "Local Admin"; "Category" = "Configurations - Local Admin (Workstation / Server)"; "Embedded" = "Configuration" }
 	@{ "Name" = "BIOS"; "SelectLabel" = "BIOS"; "Category" = "Configurations - BIOS"; "Embedded" = "Configuration" }
 	@{ "Name" = "Local User"; "SelectLabel" = "Local User Account (non-admin)"; "Category" = "Configurations - Local User Account (Workstation)"; "Embedded" = "Configuration" }
 
-	@{ "Name" = "AD"; "SelectLabel" = "AD"; "Category" = "Active Directory"; "Embedded" = "Contact" }
-	@{ "Name" = "O365"; "SelectLabel" = "O365"; "Category" = "Email Account / O365 User"; "Embedded" = "Contact" }
-	@{ "Name" = "AD & O365"; "SelectLabel" = "AD & O365"; "Category" = "Active Directory"; "Embedded" = "Contact" }
-	@{ "Name" = "Email"; "SelectLabel" = "Email (Generic, not O365)"; "Category" = "Email Account / O365 User"; "Embedded" = "Contact" }
+	@{ "Name" = "AD"; "SelectLabel" = "AD"; "Category" = "Active Directory"; "Embedded" = $false; "Linked" = "Contact" }
+	@{ "Name" = "O365"; "SelectLabel" = "O365"; "Category" = "Email Account / O365 User"; "Embedded" = $false; "Linked" = "Contact" }
+	@{ "Name" = "AD & O365"; "SelectLabel" = "AD & O365"; "Category" = "Active Directory"; "Embedded" = $false; "Linked" = "Contact" }
+	@{ "Name" = "Email"; "SelectLabel" = "Email (Generic, not O365)"; "Category" = "Email Account / O365 User"; "Embedded" = $false; "Linked" = "Contact" }
 )
 
 $PresetUsernames = @{
@@ -89,6 +91,15 @@ function loadForm($Path) {
 	}
 
 	return $Form
+}
+
+foreach ($ImportType in $ImportTypes) {
+	if (!$ImportType.ContainsKey("Linked")) {
+		$ImportType.Linked = $false;
+	}
+	if (!$ImportType.ContainsKey("Embedded")) {
+		$ImportType.Embedded = $false;
+	}
 }
 
 
@@ -233,11 +244,11 @@ if ($Table) {
 		$i++
 	}
 
-	if ($ImportType.Category -like "Configurations*") {
+	if ($ImportType.Category -like "Configurations*" -or $ImportType.Embedded -like "Configuration" -or $ImportType.Linked -like "Configuration") {
 		$var_txtNotes.Text = "This should be the configuration's name.
 		If this value appears to be an asset tag, the script will auto append the company's prefix.
 		Naming Example: $($ImportType.Name) - XXX-1111"
-	} elseif ($ImportType.Embedded -like "Contact") {
+	} elseif ($ImportType.Embedded -like "Contact" -or $ImportType.Linked -like "Contact") {
 		$var_lstSelectOptions.SelectionMode = "Multiple"
 		$var_txtNotes.Text = "This should be the contact's full name.
 		If the name is split between First and Last name columns, you may select both.
@@ -266,11 +277,16 @@ if ($Table) {
 
 	$Form.ShowDialog() | out-null
 
-	if ($ImportType.Embedded) {
-		# Choose the column for matching to the embedded asset (stored in $MatchingColumns)
+	if ($ImportType.Embedded -or $ImportType.Linked) {
+		# Choose the column for matching to the embedded/linked asset (stored in $MatchingColumns)
 		$Form = loadForm -Path($SelectFormPath)
-		$Form.Title = "Select the embed matching column(s)"
-		$var_lblDescription.Content = "Select the column(s) for matching this to the embedded asset:"
+		if ($ImportType.Embedded) {
+			$Form.Title = "Select the embed matching column(s)"
+			$var_lblDescription.Content = "Select the column(s) for matching this to the embedded asset:"
+		} else {
+			$Form.Title = "Select the linked matching column(s)"
+			$var_lblDescription.Content = "Select the column(s) for matching this to the linked asset:"
+		}
 		$var_lstSelectOptions.SelectionMode = "Multiple"
 
 		$i = 0
@@ -278,9 +294,9 @@ if ($Table) {
 			$var_lstSelectOptions.Items.Insert($i, $Col) | Out-Null
 			$i++
 		}
-		if ($ImportType.Embedded -like "Configuration") {
+		if ($ImportType.Embedded -like "Configuration" -or $ImportType.Linked -like "Configuration") {
 			$var_txtNotes.Text = "Choose columns that contain asset tags, hostnames, and/or serial numbers."
-		} elseif ($ImportType.Embedded -like "Contact") {
+		} elseif ($ImportType.Embedded -like "Contact" -or $ImportType.Linked -like "Contact") {
 			$var_txtNotes.Text = "Choose columns that contain contact's full names, first/last names, and/or email addresses."
 		}
 		$var_btnSave.IsEnabled = $false
@@ -355,11 +371,11 @@ if ($Table) {
 		}
 	}
 
-	if ($ImportType.Embedded -like "Configuration") {
+	if ($ImportType.Embedded -like "Configuration" -or $ImportType.Linked -like "Configuration") {
 		# Get full configurations list from ITG
 		Write-Host "Downloading all ITG configurations"
 		$FullConfigurationsList = (Get-ITGlueConfigurations -page_size 1000 -organization_id $OrgID).data
-	} elseif ($ImportType.Embedded -like "Contact") {
+	} elseif ($ImportType.Embedded -like "Contact" -or $ImportType.Linked -like "Contact") {
 		Write-Host "Downloading all ITG contacts"
 		$FullContactList = (Get-ITGlueContacts -page_size 1000 -organization_id $OrgID).data
 	}
@@ -371,6 +387,7 @@ if ($Table) {
 
 	# We now have a nicely formatted list of passwords, lets query the ITG data for matches and start adding them
 	$ITGCreatePasswords = @()
+	$RelatedItems = @{}
 	foreach ($PasswordInfo in $Passwords_Parsed) {
 		if (!$PasswordInfo.Name -or !$PasswordInfo.Password -or ($ImportType.Embedded -and !$PasswordInfo.Matching)) {
 			continue;
@@ -390,7 +407,7 @@ if ($Table) {
 		}
 
 		$MatchingAsset = @()
-		if ($ImportType.Embedded -eq "Configuration" -and $PasswordInfo.Matching) {
+		if (($ImportType.Embedded -eq "Configuration" -or $ImportType.Linked -eq "Configuration") -and $PasswordInfo.Matching) {
 			if (!$MatchingAsset -and $PasswordInfo.Matching.SerialNumber) {
 				$MatchingAsset = $FullConfigurationsList | Where-Object { $_.attributes.'serial-number' -like $PasswordInfo.Matching.SerialNumber }
 			}
@@ -406,7 +423,7 @@ if ($Table) {
 			if (!$MatchingAsset -and $PasswordInfo.Matching.AssetTag) {
 				$MatchingAsset = $FullConfigurationsList | Where-Object { $_.attributes.hostname -like ("*-" + $PasswordInfo.Matching.AssetTag) -or $_.attributes.name -like ("*-" + $PasswordInfo.Matching.AssetTag) }
 			}
-		} elseif ($ImportType.Embedded -eq "Contact" -and $PasswordInfo.Matching) {
+		} elseif (($ImportType.Embedded -eq "Contact" -or $ImportType.Linked -eq "Contact") -and $PasswordInfo.Matching) {
 			if (!$MatchingAsset -and $PasswordInfo.Matching.Name -and $PasswordInfo.Matching.Email) {
 				$MatchingAsset = $FullContactList | Where-Object { $_.attributes.'name' -like $PasswordInfo.Matching.Name -and ($_.attributes.'contact-emails' | Where-Object { $_.primary -eq 'True' }).value -like $PasswordInfo.Matching.Email }
 			}
@@ -447,14 +464,14 @@ if ($Table) {
 			$PasswordAssetBody.attributes.'password-folder-id' = $FolderID
 		}
 
-		if ($ImportType.Embedded -and !$MatchingAsset) {
+		if (($ImportType.Embedded -or $ImportType.Linked) -and !$MatchingAsset) {
 			# If no matching asset, display a form to let the user choose the device
 			$Form = loadForm -Path(".\Forms\ManualMatching\ManualMatching\MainWindow.xaml")
 
 			$var_lblPasswordName.Content = $PasswordName
 
 			$MatchingNotes = @()
-			if ($ImportType.Embedded -eq "Configuration" -and $PasswordInfo.Matching) {
+			if (($ImportType.Embedded -eq "Configuration" -or $ImportType.Linked -eq "Configuration") -and $PasswordInfo.Matching) {
 				if ($PasswordInfo.Matching.Hostname) {
 					$MatchingNotes += "Hostname: " + $PasswordInfo.Matching.Hostname
 				}
@@ -464,7 +481,7 @@ if ($Table) {
 				if ($PasswordInfo.Matching.SerialNumber) {
 					$MatchingNotes += "S/N: " + $PasswordInfo.Matching.SerialNumber
 				}
-			} elseif ($ImportType.Embedded -eq "Contact" -and $PasswordInfo.Matching) {
+			} elseif (($ImportType.Embedded -eq "Contact" -or $ImportType.Linked -eq "Contact") -and $PasswordInfo.Matching) {
 				if ($PasswordInfo.Matching.Name) {
 					$MatchingNotes += "Name: " + $PasswordInfo.Matching.Name
 				} elseif ($PasswordInfo.Matching.FirstName -and $PasswordInfo.Matching.LastName) {
@@ -490,9 +507,9 @@ if ($Table) {
 
 			# update the listbox with the configurations / contacts
 			$Items = $null
-			if ($ImportType.Embedded -like "Configuration") {
+			if ($ImportType.Embedded -like "Configuration" -or $ImportType.Linked -like "Configuration") {
 				$Items = $FullConfigurationsList.attributes.'name'
-			} elseif ($ImportType.Embedded -like "Contact") {
+			} elseif ($ImportType.Embedded -like "Contact" -or $ImportType.Linked -like "Contact") {
 				$Items = $FullContactList.attributes.'name'
 			}
 
@@ -509,9 +526,9 @@ if ($Table) {
 
 			$var_cmbMatch.Add_SelectionChanged({
 				$SelectedAsset = $var_cmbMatch.SelectedItem
-				if ($ImportType.Embedded -eq "Configuration") {
+				if ($ImportType.Embedded -eq "Configuration" -or $ImportType.Linked -eq "Configuration") {
 					$script:MatchingAsset = $FullConfigurationsList | Where-Object { $_.attributes.'name' -eq $SelectedAsset }
-				} elseif ($ImportType.Embedded -eq "Contact") {
+				} elseif ($ImportType.Embedded -eq "Contact" -or $ImportType.Linked -eq "Contact") {
 					$script:MatchingAsset = $FullContactList | Where-Object { $_.attributes.'name' -like $SelectedAsset }
 				}
 			})
@@ -531,12 +548,12 @@ if ($Table) {
 		}
 
 		# If multiple matches, narrow down
-		if ($ImportType.Embedded -eq "Configuration" -and ($MatchingAsset | Measure-Object).Count -gt 1) {
+		if (($ImportType.Embedded -eq "Configuration" -or $ImportType.Linked -eq "Configuration") -and ($MatchingAsset | Measure-Object).Count -gt 1) {
 			$MatchingAsset = $MatchingAsset | Where-Object { $_.attributes.archived -eq $false }
 			if (($MatchingAsset | Measure-Object).Count -gt 1) {
 				$MatchingAsset = $MatchingAsset | Sort-Object -Property id -Descending | Select-Object -First 1
 			}
-		} elseif ($ImportType.Embedded -eq "Contact" -and ($MatchingAsset | Measure-Object).Count -gt 1) {
+		} elseif (($ImportType.Embedded -eq "Contact" -or $ImportType.Linked -eq "Contact") -and ($MatchingAsset | Measure-Object).Count -gt 1) {
 			$MatchingAsset = $MatchingAsset | Where-Object { $_.attributes.'contact-type-name' -like "Employee*" }
 			if (($MatchingAsset | Measure-Object).Count -gt 1) {
 				$MatchingAsset = $MatchingAsset | Sort-Object -Property id -Descending | Select-Object -First 1
@@ -553,15 +570,46 @@ if ($Table) {
 			}
 		}
 
+		if ($ImportType.Linked -and $MatchingAsset) {
+			$RelatedItemsBody = @{
+				type = 'related_items'
+				attributes = @{
+					'destination-id' = $MatchingAsset.id
+					'destination-name' = $MatchingAsset.attributes.name
+				}
+			}
+			if ($ImportType.Linked -like 'Contact') {
+				$RelatedItemsBody.attributes.'destination-type' = 'Contact'
+				$RelatedItemsBody.attributes.'notes' = 'Password is for this contact.'
+			} elseif ($ImportType.Linked -like "Configuration") {
+				$RelatedItemsBody.attributes.'destination-type' = 'Configuration'
+				$RelatedItemsBody.attributes.'notes' = 'Password is for this configuration.'
+			}
+			$RelatedItems[$PasswordAssetBody.attributes.name] = $RelatedItemsBody
+		}
+
 		$ITGCreatePasswords += $PasswordAssetBody
 	}
 	
 	if ($ITGCreatePasswords) {
-		$ITGCreatePasswords.attributes | Select-Object -Property @{Name="name"; E={$_.name}}, @{Name="username"; E={$_.username}}, @{Name="password"; E={$_.password}}, @{Name = "matched resource name"; E={$_."resource-name"}} |
+		$ITGCreatePasswords.attributes | Select-Object -Property @{Name="name"; E={$_.name}}, @{Name="username"; E={$_.username}}, @{Name="password"; E={$_.password}}, @{Name = "matched resource name"; E={
+			if ($_."resource-name") { $_."resource-name" } elseif ($RelatedItems[$_.name]) { $RelatedItems[$_.name].attributes.'destination-name' }
+		}} |
 			Sort-Object -Property name | Out-GridView -Title "Passwords Collected. Please Review." -PassThru
 		Write-Host "Uploading passwords..."
-		$Response = New-ITGluePasswords -organization_id $orgID -data $ITGCreatePasswords | Out-Null
+		$Response = New-ITGluePasswords -organization_id $orgID -data $ITGCreatePasswords
 		Write-Host "Passwords uploaded!" -ForegroundColor Green
+
+		if ($RelatedItems) {
+			Write-Host "Creating related items..."
+			foreach ($Password in $Response.data) {
+				$Name = $Password.attributes.Name
+				if ($RelatedItems[$Name]) {
+					New-ITGlueRelatedItems -resource_type 'passwords' -resource_id $Password.id -data $RelatedItems[$Name] | Out-Null
+				}
+			}
+			Write-Host "Related items created!" -ForegroundColor Green
+		}
 	}
 
 } else {

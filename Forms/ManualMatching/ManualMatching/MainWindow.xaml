@@ -9,7 +9,7 @@
     <Grid>
         <Label Content="No match was found for the password named:" HorizontalAlignment="Left" Margin="10,10,0,0" VerticalAlignment="Top"/>
         <Label x:Name="lblPasswordName" Content="PasswordName" HorizontalAlignment="Left" Margin="259,10,0,0" VerticalAlignment="Top" FontWeight="Bold"/>
-        <Label Content="Please manually choose the asset to embed this password in." HorizontalAlignment="Left" Margin="10,36,0,0" VerticalAlignment="Top"/>
+        <Label Content="Please manually choose the asset to embed this password in (or link it to)." HorizontalAlignment="Left" Margin="10,36,0,0" VerticalAlignment="Top"/>
         <Label Content="Or, choose Ignore to skip uploading this password." HorizontalAlignment="Left" Margin="10,62,0,0" VerticalAlignment="Top"/>
         <Label x:Name="lblMatchingNotes" Content="MatchingNotes" HorizontalAlignment="Left" Margin="107,88,0,0" VerticalAlignment="Top"/>
         <Label Content="Matching Data:" HorizontalAlignment="Left" Margin="10,88,0,0" VerticalAlignment="Top" FontWeight="Bold"/>
