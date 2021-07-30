@@ -593,7 +593,7 @@ if ($Table) {
 				$RelatedItemsBody.attributes.'destination-type' = 'Configuration'
 				$RelatedItemsBody.attributes.'notes' = 'Password is for this configuration.'
 			}
-			$RelatedItems[$PasswordAssetBody.attributes.name] = $RelatedItemsBody
+			$RelatedItems[$PasswordAssetBody.attributes.name -replace '[\W]', ''] = $RelatedItemsBody
 		}
 
 		if ($PasswordInfo.Password -match "\s") {
@@ -629,7 +629,7 @@ if ($Table) {
 		if ($RelatedItems) {
 			Write-Host "Creating related items..."
 			foreach ($Password in $Response.data) {
-				$Name = $Password.attributes.Name
+				$Name = $Password.attributes.Name -replace '[\W]', ''
 				if ($RelatedItems[$Name]) {
 					New-ITGlueRelatedItems -resource_type 'passwords' -resource_id $Password.id -data $RelatedItems[$Name] | Out-Null
 				}
