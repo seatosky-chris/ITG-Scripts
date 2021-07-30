@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:Password_Import_Table_Selector_GUI"
         mc:Ignorable="d"
-        Title="Select a Table to import" Height="464.665" Width="979.148">
+        Title="Select a Table to import" Height="464.665" Width="979.148" WindowStartupLocation="CenterScreen">
     <Grid>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="163*"/>

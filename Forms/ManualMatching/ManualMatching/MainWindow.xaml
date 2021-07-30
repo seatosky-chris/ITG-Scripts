@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:ManualMatching"
         mc:Ignorable="d"
-        Title="Match not found. Manually match password to asset." Height="252" Width="468">
+        Title="Match not found. Manually match password to asset." Height="252" Width="468" WindowStartupLocation="CenterScreen">
     <Grid>
         <Label Content="No match was found for the password named:" HorizontalAlignment="Left" Margin="10,10,0,0" VerticalAlignment="Top"/>
         <Label x:Name="lblPasswordName" Content="PasswordName" HorizontalAlignment="Left" Margin="259,10,0,0" VerticalAlignment="Top" FontWeight="Bold"/>
