@@ -187,44 +187,24 @@ if ($Table) {
 	$Headers = $Table.rows[0].cells | ForEach-Object { $_.innerText }
 
 	# Choose the passwords column (stored in $PasswordsColumn)
-	$Form = loadForm -Path($SelectFormPath)
-	$Form.Title = "Select the password column"
-	$var_lblDescription.Content = "Select the column with the passwords to import:"
-	$i = 0
-	foreach ($Col in $Headers) { 
-		$var_lstSelectOptions.Items.Insert($i, $Col) | Out-Null
-		$i++
-	}
-	$var_grpNotes.Visibility = "Hidden"
-	$var_btnSave.IsEnabled = $false
-
-	$PasswordsColumn = $null
-	$var_lstSelectOptions.Add_SelectionChanged({
-		$var_btnSave.IsEnabled = $true
-		$script:PasswordsColumn = $var_lstSelectOptions.SelectedIndex
-	})
-
-	$var_btnSave.Add_Click({
-		$Form.Close()
-	})
-
-	$Form.ShowDialog() | out-null
-
-	if ($ImportType.Name -notin $PresetUsernameTypes) {
-		# Choose the username column (stored in $UsernamesColumn)
+	if ($Headers | Where-Object { $_ -like "Password" }) {
+		$PasswordsColumn = $Headers.IndexOf("Password");
+	} else {
 		$Form = loadForm -Path($SelectFormPath)
-		$Form.Title = "Select the username column"
-		$var_lblDescription.Content = "Select the column with the usernames to import:"
+		$Form.Title = "Select the password column"
+		$var_lblDescription.Content = "Select the column with the passwords to import:"
 		$i = 0
 		foreach ($Col in $Headers) { 
 			$var_lstSelectOptions.Items.Insert($i, $Col) | Out-Null
 			$i++
 		}
-		$var_txtNotes.Text = "To save no usernames, don't select anything in the list and just click save."
+		$var_grpNotes.Visibility = "Hidden"
+		$var_btnSave.IsEnabled = $false
 
-		$UsernamesColumn = $null
+		$PasswordsColumn = $null
 		$var_lstSelectOptions.Add_SelectionChanged({
-			$script:UsernamesColumn = $var_lstSelectOptions.SelectedIndex
+			$var_btnSave.IsEnabled = $true
+			$script:PasswordsColumn = $var_lstSelectOptions.SelectedIndex
 		})
 
 		$var_btnSave.Add_Click({
@@ -232,6 +212,34 @@ if ($Table) {
 		})
 
 		$Form.ShowDialog() | out-null
+	}
+
+	if ($ImportType.Name -notin $PresetUsernameTypes) {
+		# Choose the username column (stored in $UsernamesColumn)
+		if ($Headers | Where-Object { $_ -like "Username" }) {
+			$UsernamesColumn = $Headers.IndexOf("Username");
+		} else {
+			$Form = loadForm -Path($SelectFormPath)
+			$Form.Title = "Select the username column"
+			$var_lblDescription.Content = "Select the column with the usernames to import:"
+			$i = 0
+			foreach ($Col in $Headers) { 
+				$var_lstSelectOptions.Items.Insert($i, $Col) | Out-Null
+				$i++
+			}
+			$var_txtNotes.Text = "To save no usernames, don't select anything in the list and just click save."
+
+			$UsernamesColumn = $null
+			$var_lstSelectOptions.Add_SelectionChanged({
+				$script:UsernamesColumn = $var_lstSelectOptions.SelectedIndex
+			})
+
+			$var_btnSave.Add_Click({
+				$Form.Close()
+			})
+
+			$Form.ShowDialog() | out-null
+		}
 	}
 
 	# Choose the naming column (stored in $NamingColumn)
