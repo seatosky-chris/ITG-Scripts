@@ -144,7 +144,7 @@ $HTML_File = $FileBrowser.FileName
 
 # Import HTML file
 $HTML = New-Object -ComObject "HTMLFile"
-$HTML.IHTMLDocument2_write($(Get-Content $HTML_File -raw))
+$HTML.IHTMLDocument2_write($(Get-Content $HTML_File -raw -Encoding UTF8))
 
 $Content = ($HTML.all.tags("div") | Where-Object {$_.id -eq "main-content"}).innerHTML
 
@@ -327,7 +327,11 @@ if ($Table) {
 			continue; # skip header row
 		}
 
-		$Password = $Row.cells[$PasswordsColumn].innerText.Trim()
+		$Password = $Row.cells[$PasswordsColumn].innerText
+		if (!$Password) {
+			continue;
+		}
+
 		$Username = ""
 		if ($UsernamesColumn) {
 			$Username = $Row.cells[$UsernamesColumn].innerText
@@ -369,7 +373,7 @@ if ($Table) {
 
 		$Passwords_Parsed += @{
 			Username = $Username
-			Password = $Password
+			Password = $Password.Trim()
 			Name = $Name
 			Matching = $Matching
 		}
