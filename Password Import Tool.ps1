@@ -340,6 +340,13 @@ if ($Table) {
 			continue;
 		}
 
+		if ($Password -match "\s") {
+			$PasswordHTML = $Row.cells[$PasswordsColumn].innerHTML
+			$PasswordHTML = $PasswordHTML -replace "<s>.+?<\/s>", '' # remove strikethrough text
+			$PasswordHTML = $PasswordHTML -replace '<[^>]+>', '' # remove html
+			$Password = $PasswordHTML.Trim()
+		}
+
 		$Username = ""
 		if ($UsernamesColumn) {
 			$Username = $Row.cells[$UsernamesColumn].innerText
