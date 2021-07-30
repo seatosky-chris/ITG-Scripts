@@ -350,6 +350,7 @@ if ($Table) {
 		$Username = ""
 		if ($UsernamesColumn) {
 			$Username = $Row.cells[$UsernamesColumn].innerText
+			$Username = $Username -replace "\s", ''
 		} elseif ($ImportType.Name -in $PresetUsernameTypes) {
 			$Username = $PresetUsernames[$ImportType.Name]
 		}
