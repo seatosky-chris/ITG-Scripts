@@ -112,8 +112,8 @@ foreach ($ImportType in $ImportTypes) {
 	$var_lstSelectOptions.Items.Insert($i, $ImportType.SelectLabel) | Out-Null
 	$i++
 }
-$var_txtNotes.Text = "• Local Admin, Bios, and Local User Account will link to configurations
-• AD, O365, & Email will link to Contacts"
+$var_txtNotes.Text = "- Local Admin, Bios, and Local User Account will link to configurations
+- AD, O365, & Email will link to Contacts"
 $var_btnSave.IsEnabled = $false
 
 $ImportType = $null
