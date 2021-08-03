@@ -539,7 +539,7 @@ if ($Table) {
 					$MatchingNotes += "Name: " + $PasswordInfo.Matching.FirstName + " " + $PasswordInfo.Matching.LastName
 				}
 				if ($PasswordInfo.Username) {
-					$MatchingNotes += "Username: " + $PasswordInfo.Matching.Username
+					$MatchingNotes += "Username: " + $PasswordInfo.Username
 				}
 				if ($PasswordInfo.Matching.Email) {
 					$MatchingNotes += "Email: " + $PasswordInfo.Matching.Email
