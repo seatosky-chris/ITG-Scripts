@@ -669,7 +669,7 @@ if ($Table) {
 		}
 		Write-Host "Passwords uploaded!" -ForegroundColor Green
 
-		if ($RelatedItems) {
+		if ($RelatedItems.count -gt 0) {
 			Write-Host "Creating related items..."
 			foreach ($Password in $Response.data) {
 				$Name = $Password.attributes.Name -replace '[\W]', ''
