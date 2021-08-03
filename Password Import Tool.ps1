@@ -19,11 +19,14 @@ $SelectFormPath = ".\Forms\SelectForm\SelectForm\MainWindow.xaml"
 	If this password should be embedded to other assets, include this here. Otherwise false. Options: "Configuration", "Contact", $false
 .PARAMETER Linked
 	An optional parameter, can be used instead of the Embedded param. If used it will link to an asset (just like with embedded) but will create a general password and make the link as a related item. Options: "Configuration", "Contact", $false
+.PARAMETER Notes
+	An optional parameter, can be used to set the notes of a password to predefined text.
 #>
 $ImportTypes = @(
 	@{ "Name" = "Local Admin"; "SelectLabel" = "Local Admin"; "Category" = "Configurations - Local Admin (Workstation / Server)"; "Embedded" = "Configuration" }
 	@{ "Name" = "BIOS"; "SelectLabel" = "BIOS"; "Category" = "Configurations - BIOS"; "Embedded" = "Configuration" }
 	@{ "Name" = "Local User"; "SelectLabel" = "Local User Account (non-admin)"; "Category" = "Configurations - Local User Account (Workstation)"; "Embedded" = "Configuration" }
+	@{ "Name" = "Office Key"; "SelectLabel" = "Office Key"; "Category" = "Application / Software - Office Key"; "Embedded" = "Configuration"; "Notes" = "This is an old Office key and can be deleted if this computer now uses O365." }
 
 	@{ "Name" = "AD"; "SelectLabel" = "AD"; "Category" = "Active Directory"; "Embedded" = $false; "Linked" = "Contact" }
 	@{ "Name" = "O365"; "SelectLabel" = "O365"; "Category" = "Email Account / O365 User"; "Embedded" = $false; "Linked" = "Contact" }
@@ -31,9 +34,11 @@ $ImportTypes = @(
 	@{ "Name" = "Email"; "SelectLabel" = "Email (Generic, not O365)"; "Category" = "Email Account / O365 User"; "Embedded" = $false; "Linked" = "Contact" }
 )
 
+# Key comes from $ImportTypes.Name
 $PresetUsernames = @{
 	"Local Admin" = ".\Administrator"
 	"BIOS" = ""
+	"Office Key" = ""
 }
 ####################################################################
 
@@ -112,7 +117,7 @@ foreach ($ImportType in $ImportTypes) {
 	$var_lstSelectOptions.Items.Insert($i, $ImportType.SelectLabel) | Out-Null
 	$i++
 }
-$var_txtNotes.Text = "- Local Admin, Bios, and Local User Account will link to configurations
+$var_txtNotes.Text = "- Local Admin, Bios, Local User, and Office Key Account will link to configurations
 - AD, O365, & Email will link to Contacts"
 $var_btnSave.IsEnabled = $false
 
@@ -344,7 +349,7 @@ if ($Table) {
 			$PasswordHTML = $Row.cells[$PasswordsColumn].innerHTML
 			$PasswordHTML = $PasswordHTML -replace "<s>.+?<\/s>", '' # remove strikethrough text
 			$PasswordHTML = $PasswordHTML -replace '<[^>]+>', '' # remove html
-			$Password = $PasswordHTML.Trim()
+			$Password = [System.Web.HttpUtility]::HtmlDecode($PasswordHTML.Trim())
 		}
 
 		$Username = ""
@@ -354,6 +359,7 @@ if ($Table) {
 		} elseif ($ImportType.Name -in $PresetUsernameTypes) {
 			$Username = $PresetUsernames[$ImportType.Name]
 		}
+		$Username = [System.Web.HttpUtility]::HtmlDecode($Username)
 
 		if ($NamingColumn.Count -gt 1) {
 			$Order = @()
@@ -363,6 +369,23 @@ if ($Table) {
 			$Name = ($Order | ForEach-Object { $Row.Cells[$_].innerText }) -join ' '
 		} else {
 			$Name = $Row.cells[$NamingColumn].innerText
+		}
+		$Name = [System.Web.HttpUtility]::HtmlDecode($Name)
+
+		if ($ImportType.Name -eq "Office Key") {
+			$Matches = ($Password | Select-String -pattern '((Office .+?)|([0-9]{4} H&B)|(H&B [0-9]{4})): (([A-Za-z0-9]{5}-){4}[A-Za-z0-9]{5})').Matches
+			if ($Matches -and $Matches.Groups -and $Matches.Groups[1] -and $Matches.Groups[5]) {
+				$KeyType = $Matches.Groups[1].Value.Trim()
+				$Name += " ($KeyType)"
+				$Password = $Matches.Groups[5].Value.Trim()
+			} else {
+				$Matches = ($Password | Select-String -pattern '(([A-Za-z0-9]{5}-){4}[A-Za-z0-9]{5})').Matches
+				if ($Matches -and $Matches.Groups -and $Matches.Groups[1]) {
+					$Password = $Matches.Groups[1].Value.Trim()
+				} else {
+					continue;
+				}
+			}
 		}
 
 		$Matching = @{}
@@ -486,6 +509,10 @@ if ($Table) {
 
 		if ($FolderID) {
 			$PasswordAssetBody.attributes.'password-folder-id' = $FolderID
+		}
+
+		if ($ImportType.Notes) {
+			$PasswordAssetBody.attributes.notes = $ImportType.Notes
 		}
 
 		if (($ImportType.Embedded -or $ImportType.Linked) -and !$MatchingAsset) {
