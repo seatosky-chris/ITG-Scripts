@@ -21,16 +21,18 @@ $SelectFormPath = ".\Forms\SelectForm\SelectForm\MainWindow.xaml"
 	An optional parameter, can be used instead of the Embedded param. If used it will link to an asset (just like with embedded) but will create a general password and make the link as a related item. Options: "Configuration", "Contact", $false
 .PARAMETER Notes
 	An optional parameter, can be used to set the notes of a password to predefined text.
+.PARAMETER Defaults
+	An optional parameter that is a hashtable of default column selections. You can map the following keys to specific column labels: Name, Username, Password
 #>
 $ImportTypes = @(
-	@{ "Name" = "Local Admin"; "SelectLabel" = "Local Admin"; "Category" = "Configurations - Local Admin (Workstation / Server)"; "Embedded" = "Configuration" }
-	@{ "Name" = "BIOS"; "SelectLabel" = "BIOS"; "Category" = "Configurations - BIOS"; "Embedded" = "Configuration" }
+	@{ "Name" = "Local Admin"; "SelectLabel" = "Local Admin"; "Category" = "Configurations - Local Admin (Workstation / Server)"; "Embedded" = "Configuration"; "Defaults" = @{ "Password" = "Local Admin"; "Name" = "Hostname" } }
+	@{ "Name" = "BIOS"; "SelectLabel" = "BIOS"; "Category" = "Configurations - BIOS"; "Embedded" = "Configuration"; "Defaults" = @{ "Password" = "BIOS"; "Name" = "Hostname" } }
 	@{ "Name" = "Local User"; "SelectLabel" = "Local User Account (non-admin)"; "Category" = "Configurations - Local User Account (Workstation)"; "Embedded" = "Configuration" }
-	@{ "Name" = "Office Key"; "SelectLabel" = "Office Key"; "Category" = "Application / Software - Office Key"; "Embedded" = "Configuration"; "Notes" = "This is an old Office key and can be deleted if this computer now uses O365." }
+	@{ "Name" = "Office Key"; "SelectLabel" = "Office Key"; "Category" = "Application / Software - Office Key"; "Embedded" = "Configuration"; "Notes" = "This is an old Office key and can be deleted if this computer now uses O365."; "Defaults" = @{ "Password" = "Office (key)"; "Name" = "Hostname" } }
 
-	@{ "Name" = "AD"; "SelectLabel" = "AD"; "Category" = "Active Directory"; "Embedded" = $false; "Linked" = "Contact" }
+	@{ "Name" = "AD"; "SelectLabel" = "AD"; "Category" = "Active Directory"; "Embedded" = $false; "Linked" = "Contact"; "Defaults" = @{ "Username" = "Username"; "Password" = "Password"; "Name" = "User" } }
 	@{ "Name" = "O365"; "SelectLabel" = "O365"; "Category" = "Email Account / O365 User"; "Embedded" = $false; "Linked" = "Contact" }
-	@{ "Name" = "AD & O365"; "SelectLabel" = "AD & O365"; "Category" = "Active Directory"; "Embedded" = $false; "Linked" = "Contact" }
+	@{ "Name" = "AD & O365"; "SelectLabel" = "AD & O365"; "Category" = "Active Directory"; "Embedded" = $false; "Linked" = "Contact"; "Defaults" = @{ "Username" = "Username"; "Password" = "Password"; "Name" = "User" } }
 	@{ "Name" = "Email"; "SelectLabel" = "Email (Generic, not O365)"; "Category" = "Email Account / O365 User"; "Embedded" = $false; "Linked" = "Contact" }
 )
 
@@ -192,8 +194,8 @@ if ($Table) {
 	$Headers = $Table.rows[0].cells | ForEach-Object { $_.innerText }
 
 	# Choose the passwords column (stored in $PasswordsColumn)
-	if ($Headers | Where-Object { $_ -like "Password" }) {
-		$PasswordsColumn = $Headers.IndexOf("Password");
+	if ($ImportType.Defaults -and $ImportType.Defaults.Password -and ($Headers | Where-Object { $_ -like $ImportType.Defaults.Password })) {
+		$PasswordsColumn = $Headers.IndexOf($ImportType.Defaults.Password);
 	} else {
 		$Form = loadForm -Path($SelectFormPath)
 		$Form.Title = "Select the password column"
@@ -221,8 +223,8 @@ if ($Table) {
 
 	if ($ImportType.Name -notin $PresetUsernameTypes) {
 		# Choose the username column (stored in $UsernamesColumn)
-		if ($Headers | Where-Object { $_ -like "Username" }) {
-			$UsernamesColumn = $Headers.IndexOf("Username");
+		if ($ImportType.Defaults -and $ImportType.Defaults.Username -and ($Headers | Where-Object { $_ -like $ImportType.Defaults.Username })) {
+			$UsernamesColumn = $Headers.IndexOf($ImportType.Defaults.Username);
 		} else {
 			$Form = loadForm -Path($SelectFormPath)
 			$Form.Title = "Select the username column"
@@ -248,47 +250,51 @@ if ($Table) {
 	}
 
 	# Choose the naming column (stored in $NamingColumn)
-	$Form = loadForm -Path($SelectFormPath)
-	$Form.Title = "Select the naming column"
-	$var_lblDescription.Content = "Select the column to be used for naming:"
-	$i = 0
-	foreach ($Col in $Headers) { 
-		$var_lstSelectOptions.Items.Insert($i, $Col) | Out-Null
-		$i++
-	}
-
-	if ($ImportType.Category -like "Configurations*" -or $ImportType.Embedded -like "Configuration" -or $ImportType.Linked -like "Configuration") {
-		$var_txtNotes.Text = "This should be the configuration's name.
-		If this value appears to be an asset tag, the script will auto append the company's prefix.
-		Naming Example: $($ImportType.Name) - XXX-1111"
-	} elseif ($ImportType.Embedded -like "Contact" -or $ImportType.Linked -like "Contact") {
-		$var_lstSelectOptions.SelectionMode = "Multiple"
-		$var_txtNotes.Text = "This should be the contact's full name.
-		If the name is split between First and Last name columns, you may select both.
-		Naming Example: $($ImportType.Name) - John Smith"
+	if ($ImportType.Defaults -and $ImportType.Defaults.Name -and ($Headers | Where-Object { $_ -like $ImportType.Defaults.Name })) {
+		$NamingColumn = $Headers.IndexOf($ImportType.Defaults.Name);
 	} else {
-		$var_txtNotes.Text = "Naming Example: $($ImportType.Name) - Name from Column"
-	}
-	$var_btnSave.IsEnabled = $false
-
-	$NamingColumn = $null
-	$var_lstSelectOptions.Add_SelectionChanged({
-		$var_btnSave.IsEnabled = $true
-		if ($var_lstSelectOptions.SelectedItems.Count -gt 1) {
-			$script:NamingColumn = @()
-			$var_lstSelectOptions.SelectedItems | ForEach-Object {
-				$script:NamingColumn += $var_lstSelectOptions.Items.IndexOf($_)
-			}
-		} else {
-			$script:NamingColumn = $var_lstSelectOptions.SelectedIndex
+		$Form = loadForm -Path($SelectFormPath)
+		$Form.Title = "Select the naming column"
+		$var_lblDescription.Content = "Select the column to be used for naming:"
+		$i = 0
+		foreach ($Col in $Headers) { 
+			$var_lstSelectOptions.Items.Insert($i, $Col) | Out-Null
+			$i++
 		}
-	})
 
-	$var_btnSave.Add_Click({
-		$Form.Close()
-	})
+		if ($ImportType.Category -like "Configurations*" -or $ImportType.Embedded -like "Configuration" -or $ImportType.Linked -like "Configuration") {
+			$var_txtNotes.Text = "This should be the configuration's name.
+			If this value appears to be an asset tag, the script will auto append the company's prefix.
+			Naming Example: $($ImportType.Name) - XXX-1111"
+		} elseif ($ImportType.Embedded -like "Contact" -or $ImportType.Linked -like "Contact") {
+			$var_lstSelectOptions.SelectionMode = "Multiple"
+			$var_txtNotes.Text = "This should be the contact's full name.
+			If the name is split between First and Last name columns, you may select both.
+			Naming Example: $($ImportType.Name) - John Smith"
+		} else {
+			$var_txtNotes.Text = "Naming Example: $($ImportType.Name) - Name from Column"
+		}
+		$var_btnSave.IsEnabled = $false
 
-	$Form.ShowDialog() | out-null
+		$NamingColumn = $null
+		$var_lstSelectOptions.Add_SelectionChanged({
+			$var_btnSave.IsEnabled = $true
+			if ($var_lstSelectOptions.SelectedItems.Count -gt 1) {
+				$script:NamingColumn = @()
+				$var_lstSelectOptions.SelectedItems | ForEach-Object {
+					$script:NamingColumn += $var_lstSelectOptions.Items.IndexOf($_)
+				}
+			} else {
+				$script:NamingColumn = $var_lstSelectOptions.SelectedIndex
+			}
+		})
+
+		$var_btnSave.Add_Click({
+			$Form.Close()
+		})
+
+		$Form.ShowDialog() | out-null
+	}
 
 	if ($ImportType.Embedded -or $ImportType.Linked) {
 		# Choose the column for matching to the embedded/linked asset (stored in $MatchingColumns)
