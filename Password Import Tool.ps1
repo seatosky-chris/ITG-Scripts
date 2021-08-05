@@ -47,6 +47,7 @@ $PresetUsernames = @{
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName PresentationFramework
+Add-Type -AssemblyName System.Web
 
 # Ensure they are using the latest TLS version
 $CurrentTLS = [System.Net.ServicePointManager]::SecurityProtocol
