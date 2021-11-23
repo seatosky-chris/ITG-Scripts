@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "HVtzUgpnLUT4nYW976U96HETqcunCWlBh5n7J/m0Xo7SE+u04VL0tqokhMz3OBcQ/qu5O/O4jU1UcVVPhAzeOQ==",
+  "success": true,
+  "projectFilePath": "C:\\Users\\cjantzen\\Documents\\Powershell Scripts\\IT Glue\\Scripts\\PhoneNumberFormatter\\PhoneNumberFormatter.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\cjantzen\\.nuget\\packages\\libphonenumber-csharp\\8.12.34\\libphonenumber-csharp.8.12.34.nupkg.sha512",
+    "C:\\Users\\cjantzen\\.nuget\\packages\\system.collections.immutable\\1.7.1\\system.collections.immutable.1.7.1.nupkg.sha512"
+  ],
+  "logs": []
+}

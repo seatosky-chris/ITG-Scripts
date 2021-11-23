@@ -17,6 +17,12 @@ This script has limited use for us as you can only edit a small subset of data i
 
 The script can be used to mass edit a field on configurations. By default it will change all of the configurations but you can easily add a filter to the `Get-ITGlueConfigurations` line to only select a subset of configurations. You can update the `$UpdatedConfig` variable to change what field(s) gets modified. Before use, you will need to fill in an ITG API key and the ITG organization ID for the customer you are editing. 
 
+### Contact Cleanup
+This script cleans up contacts in Autotask based on data in IT Glue. Currently it runs through each phone number and formats them using Google's `libphonenumber` library. Additionally, it cleans up title fields and deactivate's any Autotask contacts that are Terminated in IT Glue.
+
+Prerequisites: This code uses some inline C# code for the phone number formatting. You will need the .NET SDK to run this. Find that here: https://dotnet.microsoft.com/download
+Additionally, you will need to open the PhoneNumberFormatter project and then have it install all dependencies. This will install the `libphonenumber` library. Open the PhoneNumberFormatter folder, then in a terminal window run `dotnet build`; this will install all dependencies. 
+
 ### Password Converter
 When using MyGlue we have found that you cannot restrict security access to embedded passwords. Embedded passwords are tied to the security of the asset they are embedded in. This does not provide the control we require so we decided to primarily use general passwords instead. This script can be used to mass convert embedded passwords into general passwords.
 
