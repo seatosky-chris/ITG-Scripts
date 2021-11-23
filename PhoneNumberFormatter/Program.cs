@@ -2,6 +2,36 @@
 using PhoneNumbers;
 using System.Text.RegularExpressions;
 
+public class Program
+{
+    public static void Main()
+    {
+        // Test
+        string phoneString = "+16047880877";
+        string formattedPhoneNumber;
+        Match cadPrefix = Regex.Match(phoneString, @"^\(\d\d\d\) ");
+
+        if (phoneString.StartsWith("011 ") || (cadPrefix.Success && cadPrefix.Index == 0) || phoneString.Trim() == "email") 
+        {
+            formattedPhoneNumber = phoneString.Trim();
+        } 
+        else 
+        {
+            try 
+            {
+                formattedPhoneNumber = PhoneNumberLookup.FormatPhoneNumber(phoneString);
+            } 
+            catch 
+            {
+                formattedPhoneNumber = phoneString;
+            }
+        }
+
+        Console.WriteLine($"Formatted: {formattedPhoneNumber}");
+    }
+}
+
+// Primary Class
 public class PhoneNumberLookup 
 {
     public static string FormatPhoneNumber(string phoneString)

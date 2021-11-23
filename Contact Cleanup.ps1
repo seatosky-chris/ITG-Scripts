@@ -10,9 +10,10 @@ $AutotaskAPIKey = @{
 	IntegrationCode = ""
 }
 
+# See README for full instructions on setup.
 # Find the nuget package location with "dotnet nuget locals global-packages -l" in a terminal
 # Then navigate to the "libphonenumber-csharp" folder and find the latest PhoneNumbers.dll for a version of .Net that will work on this system
-# Use the full path for this constant
+# Use the full path for this constant.
 $phoneNumbersDLLPath = "C:\Users\Administrator\.nuget\packages\libphonenumber-csharp\8.12.34\lib\net46\PhoneNumbers.dll"
 ####################################################################
 
