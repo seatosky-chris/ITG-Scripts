@@ -9,6 +9,7 @@ $AutotaskAPIKey = @{
 	Key = ""
 	IntegrationCode = ""
 }
+$LastUpdatedUpdater_APIURL = ""
 
 # See README for full instructions on setup.
 # Find the nuget package location with "dotnet nuget locals global-packages -l" in a terminal
@@ -316,5 +317,27 @@ foreach ($Company in $Companies) {
 		if ($ChangesMade) {
 			Set-AutotaskAPIResource -Resource CompanyContactsChild -ID $Contact.id -body $ContactUpdate
 		}
+	}
+
+	# Update / Create the "Scripts - Last Run" ITG page which shows when the contact cleanup (and other scripts) last ran
+	if ($LastUpdatedUpdater_APIURL -and $Company.ITGID) {
+		$Headers = @{
+			"x-api-key" = $ITGAPIKey.Key
+		}
+		$Body = @{
+			"apiurl" = $ITGAPIKey.Url
+			"itgOrgID" = $Company.ITGID
+			"HostDevice" = $env:computername
+			"contact-cleanup" = (Get-Date).ToString("yyyy-MM-dd")
+		}
+	
+		$Params = @{
+			Method = "Post"
+			Uri = $LastUpdatedUpdater_APIURL
+			Headers = $Headers
+			Body = ($Body | ConvertTo-Json)
+			ContentType = "application/json"
+		}			
+		Invoke-RestMethod @Params 
 	}
 }
