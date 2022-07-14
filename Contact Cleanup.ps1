@@ -192,13 +192,15 @@ foreach ($Company in $Companies) {
 		}
 
 		if (($AutotaskContact | Measure-Object).Count -gt 1) {
-			$AutotaskContact = $AutotaskContact | Where-Object { $_.title.Trim() -eq ($Contact.attributes.title | Out-String).Trim() -and ((($_.mobilePhone -replace '\D', '') -in $Contact.attributes.'contact-phones'.value -and ($_.phone -replace '\D', '') -in $Contact.attributes.'contact-phones'.value) -or !$Contact.attributes.'contact-phones'.value) }
+			$PhoneMatches = @($Contact.attributes.'contact-phones'.value)
+			$PhoneMatches += ""
+			$AutotaskContact = $AutotaskContact | Where-Object { $_.title.Trim() -eq ($Contact.attributes.title | Out-String).Trim() -and ((($_.mobilePhone -replace '\D', '') -in $PhoneMatches -and ($_.phone -replace '\D', '') -in $PhoneMatches) -or !$Contact.attributes.'contact-phones'.value) }
 		}
 
 		if (($AutotaskContact | Measure-Object).Count -gt 1 -and $ITGLocations -and $Contact.attributes.'location-id') {
 			$Location = $ITGLocations | Where-Object { $_.id -eq $Contact.attributes.'location-id' }
 			if ($Location.attributes.'psa-integration' -eq 'enabled') {
-				$AutotaskContact = $AutotaskContact | Where-Object { $_.city -like $Location.attributes.city -and $_.state -like $Location.attributes.'region-name' -and ($_.zipCode -replace '\W', '') -like ($Location.attributes.'postal-code' -replace '\W', '') }
+				$AutotaskContact = $AutotaskContact | Where-Object { $_.city -like $Location.attributes.city -and ($_.zipCode -replace '\W', '') -like ($Location.attributes.'postal-code' -replace '\W', '') }
 				if (($AutotaskContact | Measure-Object).Count -gt 1) {
 					$AutotaskContact = $AutotaskContact | Where-Object { $_.addressLine -like $Location.attributes.'address-1' }
 				}
