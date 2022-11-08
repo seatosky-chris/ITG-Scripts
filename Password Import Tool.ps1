@@ -428,7 +428,15 @@ if ($Table) {
 	if ($ImportType.Embedded -like "Configuration" -or $ImportType.Linked -like "Configuration") {
 		# Get full configurations list from ITG
 		Write-Host "Downloading all ITG configurations"
-		$FullConfigurationsList = (Get-ITGlueConfigurations -page_size 1000 -organization_id $OrgID).data
+		$FullConfigurationsList = Get-ITGlueConfigurations -page_size "1000" -organization_id $OrgID
+		$i = 1
+		while ($FullConfigurationsList.links.next) {
+			$i++
+			$Configurations_Next = Get-ITGlueConfigurations -page_size "1000" -page_number $i -organization_id $OrgID
+			$FullConfigurationsList.data += $Configurations_Next.data
+			$FullConfigurationsList.links = $Configurations_Next.links
+		}
+		$FullConfigurationsList = $FullConfigurationsList.data
 	} elseif ($ImportType.Embedded -like "Contact" -or $ImportType.Linked -like "Contact") {
 		Write-Host "Downloading all ITG contacts"
 		$FullContactList = (Get-ITGlueContacts -page_size 1000 -organization_id $OrgID).data
