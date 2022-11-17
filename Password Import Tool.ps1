@@ -145,54 +145,63 @@ if (!$ImportType) {
 # File selector
 $FileBrowser = New-Object System.Windows.Forms.OpenFileDialog -Property @{
 	InitialDirectory = (New-Object -ComObject Shell.Application).NameSpace('shell:Downloads').Self.Path
-	Filter = 'HTML (*.html;*.htm)|*.html;*.htm'
+	Filter = 'HTML or CSV (*.html;*.htm;*.csv)|*.html;*.htm;*.csv'
 }
 $null = $FileBrowser.ShowDialog()
-$HTML_File = $FileBrowser.FileName
+$Imported_File = $FileBrowser.FileName
+$FileType = [System.IO.Path]::GetExtension($Imported_File)
 
-# Import HTML file
-$HTML = New-Object -ComObject "HTMLFile"
-$HTML.IHTMLDocument2_write($(Get-Content $HTML_File -raw -Encoding UTF8))
-
-$Content = ($HTML.all.tags("div") | Where-Object {$_.id -eq "main-content"}).innerHTML
-
-# Get Table headers
-$Matches = ($Content | Select-String -pattern '(<h[1-6].*?>(.+?)<\/h2>\s*)?<div class="?table-wrap"?>\s*<table ' -AllMatches).Matches
-$i = 0
-$TableNames = $Matches | ForEach-Object { if ($_.Groups[2].Value) { $_.Groups[2].Value } else { $i++; "No Name #$i" } }
-
-# Get Tables
-$Tables = $HTML.all.tags("table")
-
-if (($Tables | Measure-Object).Count -gt 1) {
-	# Present the user with the list of tables and let them choose the correct one for this import
-	$Form = loadForm -Path(".\Forms\Password-Import_Table-Selector-GUI\Password-Import_Table-Selector-GUI\MainWindow.xaml")
-
-	# update the listbox with the table names
-	foreach ($TableName in $TableNames) {
-		$var_lstTableSelection.Items.Add($TableName) | Out-Null
-	}
-
-	# on listbox select, show example
-	$var_lstTableSelection.Add_SelectionChanged({
-		$SelectedTable = $var_lstTableSelection.SelectedItem
-		$index = $TableNames.IndexOf($SelectedTable)
-		$script:Table = $Tables[$index]
-		$var_webExample.NavigateToString("<table>" + $Table.innerHTML + "</table>") 
-	})
-
-	$var_btnSave.Add_Click({
-		$Form.Close()
-	})
-
-	$Form.ShowDialog() | out-null
+if ($FileType -eq ".csv") {
+	$Table = Import-Csv -Path $Imported_File
 } else {
-	$Table = $Tables[0]
+	# Import HTML file
+	$HTML = New-Object -ComObject "HTMLFile"
+	$HTML.IHTMLDocument2_write($(Get-Content $Imported_File -raw -Encoding UTF8))
+
+	$Content = ($HTML.all.tags("div") | Where-Object {$_.id -eq "main-content"}).innerHTML
+
+	# Get Table headers
+	$Matches = ($Content | Select-String -pattern '(<h[1-6].*?>(.+?)<\/h2>\s*)?<div class="?table-wrap"?>\s*<table ' -AllMatches).Matches
+	$i = 0
+	$TableNames = $Matches | ForEach-Object { if ($_.Groups[2].Value) { $_.Groups[2].Value } else { $i++; "No Name #$i" } }
+
+	# Get Tables
+	$Tables = $HTML.all.tags("table")
+
+	if (($Tables | Measure-Object).Count -gt 1) {
+		# Present the user with the list of tables and let them choose the correct one for this import
+		$Form = loadForm -Path(".\Forms\Password-Import_Table-Selector-GUI\Password-Import_Table-Selector-GUI\MainWindow.xaml")
+
+		# update the listbox with the table names
+		foreach ($TableName in $TableNames) {
+			$var_lstTableSelection.Items.Add($TableName) | Out-Null
+		}
+
+		# on listbox select, show example
+		$var_lstTableSelection.Add_SelectionChanged({
+			$SelectedTable = $var_lstTableSelection.SelectedItem
+			$index = $TableNames.IndexOf($SelectedTable)
+			$script:Table = $Tables[$index]
+			$var_webExample.NavigateToString("<table>" + $Table.innerHTML + "</table>") 
+		})
+
+		$var_btnSave.Add_Click({
+			$Form.Close()
+		})
+
+		$Form.ShowDialog() | out-null
+	} else {
+		$Table = $Tables[0]
+	}
 }
 
 # A table was selected (or only one exists), lets parse it
 if ($Table) {
-	$Headers = $Table.rows[0].cells | ForEach-Object { $_.innerText }
+	if ($FileType -eq ".csv") {
+		$Headers = $Table[0].PSObject.Properties.Name
+	} else {
+		$Headers = $Table.rows[0].cells | ForEach-Object { $_.innerText }
+	}
 
 	# Choose the passwords column (stored in $PasswordsColumn)
 	if ($ImportType.Defaults -and $ImportType.Defaults.Password -and ($Headers | Where-Object { $_ -like $ImportType.Defaults.Password })) {
@@ -212,7 +221,11 @@ if ($Table) {
 		$PasswordsColumn = $null
 		$var_lstSelectOptions.Add_SelectionChanged({
 			$var_btnSave.IsEnabled = $true
-			$script:PasswordsColumn = $var_lstSelectOptions.SelectedIndex
+			if ($FileType -eq ".csv") {
+				$script:PasswordsColumn = $var_lstSelectOptions.SelectedValue
+			} else {
+				$script:PasswordsColumn = $var_lstSelectOptions.SelectedIndex
+			}
 		})
 
 		$var_btnSave.Add_Click({
@@ -239,7 +252,11 @@ if ($Table) {
 
 			$UsernamesColumn = $null
 			$var_lstSelectOptions.Add_SelectionChanged({
-				$script:UsernamesColumn = $var_lstSelectOptions.SelectedIndex
+				if ($FileType -eq ".csv") {
+					$script:UsernamesColumn = $var_lstSelectOptions.SelectedValue
+				} else {
+					$script:UsernamesColumn = $var_lstSelectOptions.SelectedIndex
+				}
 			})
 
 			$var_btnSave.Add_Click({
@@ -282,11 +299,19 @@ if ($Table) {
 			$var_btnSave.IsEnabled = $true
 			if ($var_lstSelectOptions.SelectedItems.Count -gt 1) {
 				$script:NamingColumn = @()
-				$var_lstSelectOptions.SelectedItems | ForEach-Object {
-					$script:NamingColumn += $var_lstSelectOptions.Items.IndexOf($_)
+				if ($FileType -eq ".csv") {
+					$script:NamingColumn = $var_lstSelectOptions.SelectedItems
+				} else {
+					$var_lstSelectOptions.SelectedItems | ForEach-Object {
+						$script:NamingColumn += $var_lstSelectOptions.Items.IndexOf($_)
+					}
 				}
 			} else {
-				$script:NamingColumn = $var_lstSelectOptions.SelectedIndex
+				if ($FileType -eq ".csv") {
+					$script:NamingColumn = $var_lstSelectOptions.SelectedValue
+				} else {
+					$script:NamingColumn = $var_lstSelectOptions.SelectedIndex
+				}
 			}
 		})
 
@@ -325,9 +350,13 @@ if ($Table) {
 		$var_lstSelectOptions.Add_SelectionChanged({
 			$var_btnSave.IsEnabled = $true
 			$script:MatchingColumns = @()
-			$var_lstSelectOptions.SelectedItems | ForEach-Object {
-				$script:MatchingColumns += $var_lstSelectOptions.Items.IndexOf($_)
-			}
+				if ($FileType -eq ".csv") {
+					$script:MatchingColumns = $var_lstSelectOptions.SelectedItems
+				} else {
+					$var_lstSelectOptions.SelectedItems | ForEach-Object {
+						$script:MatchingColumns += $var_lstSelectOptions.Items.IndexOf($_)
+					}
+				}
 		})
 
 		$var_btnSave.Add_Click({
@@ -339,89 +368,181 @@ if ($Table) {
 
 	# We now know which columns to use, lets loop through the table and save each password and its associated values in an array
 	$Passwords_Parsed = @()
-	$Length = $Table.rows.length 
-	for ($i = 1; $i -lt $Length; $i++) {
-		$Row = $Table.rows[$i]
 
-		if ($Row.cells[0].innerText -eq $Headers[0] -and $Row.cells[1].innerText -eq $Headers[1]) {
-			continue; # skip header row
-		}
+	if ($FileType -eq ".csv") {
+		# CSV
+		foreach ($Row in $Table) {
+			$Password = $Row.$PasswordsColumn
+			if (!$Password) {
+				continue;
+			}
 
-		$Password = $Row.cells[$PasswordsColumn].innerText
-		if (!$Password) {
-			continue;
-		}
+			$Username = ""
+			if ($UsernamesColumn) {
+				$Username = $Row.$UsernamesColumn
+				$Username = $Username -replace "\s", ''
+			} elseif ($ImportType.Name -in $PresetUsernameTypes) {
+				$Username = $PresetUsernames[$ImportType.Name]
+			}
 
-		if ($Password -match "\s") {
-			$PasswordHTML = $Row.cells[$PasswordsColumn].innerHTML
-			$PasswordHTML = $PasswordHTML -replace "<s>.+?<\/s>", '' # remove strikethrough text
-			$PasswordHTML = $PasswordHTML -replace '<[^>]+>', '' # remove html
-			$Password = [System.Web.HttpUtility]::HtmlDecode($PasswordHTML.Trim())
-		}
+			$URL = ""
+			$URLColumn = $false
+			if ($URLColumn) {
+				$URL = $Row.$URLColumn
+				$URL = $URL -replace "\s", ''
+			}
 
-		$Username = ""
-		if ($UsernamesColumn) {
-			$Username = $Row.cells[$UsernamesColumn].innerText
-			$Username = $Username -replace "\s", ''
-		} elseif ($ImportType.Name -in $PresetUsernameTypes) {
-			$Username = $PresetUsernames[$ImportType.Name]
-		}
-		$Username = [System.Web.HttpUtility]::HtmlDecode($Username)
+			$Notes = ""
+			$NotesColumn = $false
+			if ($NotesColumn) {
+				$Notes = $Row.$NotesColumn
+			}
 
-		if ($NamingColumn.Count -gt 1) {
-			$Order = @()
-			$NamingColumn | ForEach-Object { if ($Headers[$_] -like "*First*") { $Order += $_ } }
-			$NamingColumn | ForEach-Object { if ($Headers[$_] -notlike "*First*" -and $Headers[$_] -notlike "*Last*") { $Order += $_ } }
-			$NamingColumn | ForEach-Object { if ($Headers[$_] -like "*Last*") { $Order += $_ } }
-			$Name = ($Order | ForEach-Object { $Row.Cells[$_].innerText }) -join ' '
-		} else {
-			$Name = $Row.cells[$NamingColumn].innerText
-		}
-		$Name = [System.Web.HttpUtility]::HtmlDecode($Name)
-
-		if ($ImportType.Name -eq "Office Key") {
-			$Matches = ($Password | Select-String -pattern '((Office .+?)|([0-9]{4} H&B)|(H&B [0-9]{4})): (([A-Za-z0-9]{5}-){4}[A-Za-z0-9]{5})').Matches
-			if ($Matches -and $Matches.Groups -and $Matches.Groups[1] -and $Matches.Groups[5]) {
-				$KeyType = $Matches.Groups[1].Value.Trim()
-				$Name += " ($KeyType)"
-				$Password = $Matches.Groups[5].Value.Trim()
+			if ($NamingColumn.Count -gt 1) {
+				$Order = @()
+				$NamingColumn | ForEach-Object { if ($Headers[$_] -like "*First*") { $Order += $_ } }
+				$NamingColumn | ForEach-Object { if ($Headers[$_] -notlike "*First*" -and $Headers[$_] -notlike "*Last*") { $Order += $_ } }
+				$NamingColumn | ForEach-Object { if ($Headers[$_] -like "*Last*") { $Order += $_ } }
+				$Name = ($Order | ForEach-Object { $Row.$_ }) -join ' '
 			} else {
-				$Matches = ($Password | Select-String -pattern '(([A-Za-z0-9]{5}-){4}[A-Za-z0-9]{5})').Matches
-				if ($Matches -and $Matches.Groups -and $Matches.Groups[1]) {
-					$Password = $Matches.Groups[1].Value.Trim()
+				$Name = $Row.$NamingColumn
+			}
+
+			if ($ImportType.Name -eq "Office Key") {
+				$Matches = ($Password | Select-String -pattern '((Office .+?)|([0-9]{4} H&B)|(H&B [0-9]{4})): (([A-Za-z0-9]{5}-){4}[A-Za-z0-9]{5})').Matches
+				if ($Matches -and $Matches.Groups -and $Matches.Groups[1] -and $Matches.Groups[5]) {
+					$KeyType = $Matches.Groups[1].Value.Trim()
+					$Name += " ($KeyType)"
+					$Password = $Matches.Groups[5].Value.Trim()
 				} else {
-					continue;
+					$Matches = ($Password | Select-String -pattern '(([A-Za-z0-9]{5}-){4}[A-Za-z0-9]{5})').Matches
+					if ($Matches -and $Matches.Groups -and $Matches.Groups[1]) {
+						$Password = $Matches.Groups[1].Value.Trim()
+					} else {
+						continue;
+					}
 				}
 			}
-		}
 
-		$Matching = @{}
-		$MatchingColumns | ForEach-Object { 
-			$Type = $Headers[$_]
-			if ($Type -like "Asset*") {
-				$Type = "AssetTag"
-			} elseif ($Type -like "Serial*" -or $Type -like "Service Tag") {
-				$Type = "SerialNumber"
-			} elseif ($Type -like "Name" -and $ImportType.Embedded -like "Configuration") {
-				$Type = "Hostname"
-			} elseif ($Type -like "User" -or $Type -like "Full Name") {
-				$Type = "Name"
-			} elseif ($Type -like "First*") {
-				$Type = "FirstName"
-			} elseif ($Type -like "Last*") {
-				$Type = "LastName"
-			} elseif ($Type -like "Email*") {
-				$Type = "Email"
+			$Matching = @{}
+			if ($MatchingColumns) {
+				$MatchingColumns | ForEach-Object { 
+					$Type = $Headers[$_]
+					if ($Type -like "Asset*") {
+						$Type = "AssetTag"
+					} elseif ($Type -like "Serial*" -or $Type -like "Service Tag") {
+						$Type = "SerialNumber"
+					} elseif ($Type -like "Name" -and $ImportType.Embedded -like "Configuration") {
+						$Type = "Hostname"
+					} elseif ($Type -like "User" -or $Type -like "Full Name") {
+						$Type = "Name"
+					} elseif ($Type -like "First*") {
+						$Type = "FirstName"
+					} elseif ($Type -like "Last*") {
+						$Type = "LastName"
+					} elseif ($Type -like "Email*") {
+						$Type = "Email"
+					}
+					# TODO: Show a form to match any types not in the above list
+					$Matching[$Type] = $Row.$_
+				}
 			}
-			# TODO: Show a form to match any types not in the above list
-			$Matching[$Type] = $Row.cells[$_].innerText
-		}
 
-		$Passwords_Parsed += @{
-			Username = $Username
-			Password = $Password.Trim()
-			Name = $Name
-			Matching = $Matching
+			$Passwords_Parsed += @{
+				Username = $Username
+				Password = $Password.Trim()
+				Name = $Name
+				Matching = $Matching
+				URL = $URL
+				Notes = $Notes
+			}
+		}
+	} else {
+		# HTML
+		$Length = $Table.rows.length 
+		for ($i = 1; $i -lt $Length; $i++) {
+			$Row = $Table.rows[$i]
+
+			if ($Row.cells[0].innerText -eq $Headers[0] -and $Row.cells[1].innerText -eq $Headers[1]) {
+				continue; # skip header row
+			}
+
+			$Password = $Row.cells[$PasswordsColumn].innerText
+			if (!$Password) {
+				continue;
+			}
+
+			if ($Password -match "\s") {
+				$PasswordHTML = $Row.cells[$PasswordsColumn].innerHTML
+				$PasswordHTML = $PasswordHTML -replace "<s>.+?<\/s>", '' # remove strikethrough text
+				$PasswordHTML = $PasswordHTML -replace '<[^>]+>', '' # remove html
+				$Password = [System.Web.HttpUtility]::HtmlDecode($PasswordHTML.Trim())
+			}
+
+			$Username = ""
+			if ($UsernamesColumn) {
+				$Username = $Row.cells[$UsernamesColumn].innerText
+				$Username = $Username -replace "\s", ''
+			} elseif ($ImportType.Name -in $PresetUsernameTypes) {
+				$Username = $PresetUsernames[$ImportType.Name]
+			}
+			$Username = [System.Web.HttpUtility]::HtmlDecode($Username)
+
+			if ($NamingColumn.Count -gt 1) {
+				$Order = @()
+				$NamingColumn | ForEach-Object { if ($Headers[$_] -like "*First*") { $Order += $_ } }
+				$NamingColumn | ForEach-Object { if ($Headers[$_] -notlike "*First*" -and $Headers[$_] -notlike "*Last*") { $Order += $_ } }
+				$NamingColumn | ForEach-Object { if ($Headers[$_] -like "*Last*") { $Order += $_ } }
+				$Name = ($Order | ForEach-Object { $Row.Cells[$_].innerText }) -join ' '
+			} else {
+				$Name = $Row.cells[$NamingColumn].innerText
+			}
+			$Name = [System.Web.HttpUtility]::HtmlDecode($Name)
+
+			if ($ImportType.Name -eq "Office Key") {
+				$Matches = ($Password | Select-String -pattern '((Office .+?)|([0-9]{4} H&B)|(H&B [0-9]{4})): (([A-Za-z0-9]{5}-){4}[A-Za-z0-9]{5})').Matches
+				if ($Matches -and $Matches.Groups -and $Matches.Groups[1] -and $Matches.Groups[5]) {
+					$KeyType = $Matches.Groups[1].Value.Trim()
+					$Name += " ($KeyType)"
+					$Password = $Matches.Groups[5].Value.Trim()
+				} else {
+					$Matches = ($Password | Select-String -pattern '(([A-Za-z0-9]{5}-){4}[A-Za-z0-9]{5})').Matches
+					if ($Matches -and $Matches.Groups -and $Matches.Groups[1]) {
+						$Password = $Matches.Groups[1].Value.Trim()
+					} else {
+						continue;
+					}
+				}
+			}
+
+			$Matching = @{}
+			$MatchingColumns | ForEach-Object { 
+				$Type = $Headers[$_]
+				if ($Type -like "Asset*") {
+					$Type = "AssetTag"
+				} elseif ($Type -like "Serial*" -or $Type -like "Service Tag") {
+					$Type = "SerialNumber"
+				} elseif ($Type -like "Name" -and $ImportType.Embedded -like "Configuration") {
+					$Type = "Hostname"
+				} elseif ($Type -like "User" -or $Type -like "Full Name") {
+					$Type = "Name"
+				} elseif ($Type -like "First*") {
+					$Type = "FirstName"
+				} elseif ($Type -like "Last*") {
+					$Type = "LastName"
+				} elseif ($Type -like "Email*") {
+					$Type = "Email"
+				}
+				# TODO: Show a form to match any types not in the above list
+				$Matching[$Type] = $Row.cells[$_].innerText
+			}
+
+			$Passwords_Parsed += @{
+				Username = $Username
+				Password = $Password.Trim()
+				Name = $Name
+				Matching = $Matching
+			}
 		}
 	}
 
@@ -526,8 +647,15 @@ if ($Table) {
 			$PasswordAssetBody.attributes.'password-folder-id' = $FolderID
 		}
 
+		if ($PasswordInfo.URL) {
+			$PasswordAssetBody.attributes.url = $PasswordInfo.URL
+		}
+
 		if ($ImportType.Notes) {
 			$PasswordAssetBody.attributes.notes = $ImportType.Notes
+		}
+		if ($PasswordInfo.Notes) {
+			$PasswordAssetBody.attributes.notes = $PasswordInfo.Notes
 		}
 
 		if (($ImportType.Embedded -or $ImportType.Linked) -and !$MatchingAsset) {
