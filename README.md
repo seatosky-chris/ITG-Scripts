@@ -23,6 +23,9 @@ This script cleans up contacts in Autotask based on data in IT Glue. Currently i
 Prerequisites: This code uses some inline C# code for the phone number formatting. You will need the .NET SDK to run this. Find that here: https://dotnet.microsoft.com/download
 Additionally, you will need to open the PhoneNumberFormatter project and then have it install all dependencies. This will install the `libphonenumber` library. Open the PhoneNumberFormatter folder, then in a terminal window run `dotnet build`; this will install all dependencies. Next run `dotnet nuget locals global-packages -l` to find the location of the NuGet packages, navigate to that location. Find the `libphonenumber-csharp` folder and then navigate into the highest version. Navigate into the `lib` then `net46` folders. Get the path to the `PhoneNumbers.dll` file, use this path for the `$phoneNumbersDLLPath` constant.
 
+### ITG Flexible Asset Fields Backup
+This script backs up all flexible assets in ITG. It will create a folder with a date/timestamp each time it runs a backup, and in the folder is a separate json file for each flexible asset. These json files contain info on the flexible asset itself, and all fields within it. It should be all the info needed for recreating these flexible asset templates. Once complete, it will cleanup old backups, keeping a configurable amount of days worth of backups. The script is designed to be ran once a day, but you can run it more or less often.
+
 ### Password Converter
 When using MyGlue we have found that you cannot restrict security access to embedded passwords. Embedded passwords are tied to the security of the asset they are embedded in. This does not provide the control we require so we decided to primarily use general passwords instead. This script can be used to mass convert embedded passwords into general passwords.
 
