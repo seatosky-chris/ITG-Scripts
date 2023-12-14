@@ -47,6 +47,8 @@ There is no way I could find natively in ITG to convert an embedded password to 
 
 To setup the script up you will need to fill in an ITG API key (with full password access) and the ITG organization ID of the customer you want to convert passwords for. You can also modify the limit; this is how many passwords it will convert in one batch. Manual fixes will be easier if you don't make this amount too large.
 
+There is an additional script called "Password Convert - All Contacts" that will run for all contacts across all organizations if you need a quick way to target all of your documentation.
+
 :heavy_exclamation_mark::heavy_exclamation_mark::heavy_exclamation_mark: If you are unsure of how this tool works, I would suggest testing it first on a dummy organization with some fake embedded passwords. If not used correctly, important password data can be lost!
 
 ### Password Import Tool
