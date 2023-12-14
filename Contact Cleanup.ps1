@@ -11,6 +11,8 @@ $AutotaskAPIKey = @{
 }
 $LastUpdatedUpdater_APIURL = ""
 
+$CyberQP_APIVendorID = $false # This is the API vendor ID for CyberQP/Quickpass. We use this to check if a contact was made by Quickpass. Set to $false to disable.
+
 # See README for full instructions on setup.
 # Find the nuget package location with "dotnet nuget locals global-packages -l" in a terminal
 # Then navigate to the "libphonenumber-csharp" folder and find the latest PhoneNumbers.dll for a version of .Net that will work on this system
@@ -107,7 +109,18 @@ public class PhoneNumberLookup
 }
 "@ -ReferencedAssemblies @($phoneNumbersDLLPath, "System.Text.RegularExpressions")
 
-function FormatPhoneNumber($phoneString) {
+function FormatPhoneNumber($phoneString, $APIVendorID = $false) {
+	# Quickpass phone number fix
+	if ($CyberQP_APIVendorID -and $phoneString -like "+*") {
+		if ($APIVendorID -and $APIVendorID -eq $CyberQP_APIVendorID -and $phoneString -notlike "+1*" -and $phoneString.length -lt 12) {
+			$phoneString = "+1$($phoneString.Substring(1))"
+		} elseif ($phoneString.length -eq 11) {
+			$phoneString = "+1$($phoneString.Substring(1))"
+		} elseif ($phoneString.length -lt 7) {
+			$phoneString = $phoneString.Substring(1)
+		}
+	}
+
 	if ($phoneString.StartsWith("011 ") -or $phoneString -match "^\(\d\d\d\) " -or $phoneString.Trim() -eq "email") {
         $formattedPhoneNumber = $phoneString.Trim();
     } else {
@@ -271,7 +284,7 @@ foreach ($Company in $Companies) {
 
 		# Update phone number formatting and titles in Autotask
 		if ($Contact.phone) {
-			$FormattedPhone = FormatPhoneNumber -phoneString $Contact.phone;
+			$FormattedPhone = FormatPhoneNumber -phoneString $Contact.phone -APIVendorID $Contact.apiVendorID
 
 			if ($FormattedPhone -like "*ext.*") {
 				$Extension = $FormattedPhone.Substring($FormattedPhone.IndexOf("ext.") + 5).Trim() 
@@ -293,7 +306,7 @@ foreach ($Company in $Companies) {
 		}
 
 		if ($Contact.mobilePhone) {
-			$FormattedPhone = FormatPhoneNumber -phoneString $Contact.mobilePhone;
+			$FormattedPhone = FormatPhoneNumber -phoneString $Contact.mobilePhone -APIVendorID $Contact.apiVendorID
 			if ($Contact.mobilePhone -ne $FormattedPhone) {
 				$ChangesMade = $true
 				$ContactUpdate | Add-Member -NotePropertyName mobilePhone -NotePropertyValue ""
@@ -302,7 +315,7 @@ foreach ($Company in $Companies) {
 		}
 
 		if ($Contact.alternatePhone) {
-			$FormattedPhone = FormatPhoneNumber -phoneString $Contact.alternatePhone;
+			$FormattedPhone = FormatPhoneNumber -phoneString $Contact.alternatePhone -APIVendorID $Contact.apiVendorID
 			if ($Contact.alternatePhone -ne $FormattedPhone) {
 				$ChangesMade = $true
 				$ContactUpdate | Add-Member -NotePropertyName alternatePhone -NotePropertyValue ""
