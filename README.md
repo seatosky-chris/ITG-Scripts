@@ -26,6 +26,20 @@ Additionally, you will need to open the PhoneNumberFormatter project and then ha
 ### ITG Flexible Asset Fields Backup
 This script backs up all flexible assets in ITG. It will create a folder with a date/timestamp each time it runs a backup, and in the folder is a separate json file for each flexible asset. These json files contain info on the flexible asset itself, and all fields within it. It should be all the info needed for recreating these flexible asset templates. Once complete, it will cleanup old backups, keeping a configurable amount of days worth of backups. The script is designed to be ran once a day, but you can run it more or less often.
 
+### Password Cleanup
+This script can be used to cleanup password documentation in ITG. There are 2 versions, one manual version that allows you to step through and manually approve various changes (others are done automatically), and an automatic version that can be run daily unattended to fix most issues that don't need manual intervention. The automatic version will send out an email with any manual changes that need to be looked into or completed. This cleanup has mainly been created to help cleanup naming/categorization and to assist in matching with Quickpass, and cleaning up issues that Quickpass creates in our documentation. This is focused on user passwords and requires an AD and Email asset to be setup in ITG. Additionally, we use a password naming convention of `Type - Asset or User` (e.g. "AD & O365 - Test User"), this script heavily relies on that naming convention and will set password names to use that convention.
+
+These are the main things the cleanup will attempt to fix:
+- The passwords category and the type of password in the naming (based on our naming convention, e.g. "AD - Test User" or "AD & O365 - Test User")
+  - For this the cleanup queries the AD and Email assets in ITG to determine what is setup and if AD/O365 sync is setup
+- Username standardization to help with matching in Quickpass
+- Fixes naming and categorization of Quickpass created passwords (it then renames the "Created by Quickpass" note to "Created by Quickpass - Cleaned")
+- Looks for duplicate passwords created by Quickpass, updates the existing password the new username if applicable, deleted the new password created by Quickpass, and suggests you manually update the Quickpass match to the correct password
+- Properly labels and categorizations O365 Global Admin passwords
+- Automatic only: Attempts to match passwords (as related items) to contacts and configurations. This save the last time this was done and only looks at new passwords since the last run as it can take quite a long time to run
+
+To setup the script up you will need to fill in an ITG API key (with full password access) and an email API key from the Automation Mailer (or SendGrid or something similar). Setup the EmailFrom and EmailTo if setting up the Automatic script. The `$PasswordCategoryIDs` are the ITG category ID's that you want associated with different types of passwords. The `OldEmail` and `OldEmailAdmin` we used as we wanted to move O365 Global Admin passwords to a new category, but in most cases these can be ignored and that code can be removed. You will also need to set the names of your AD and Email flexible assets in ITG. The `$PasswordCatTypes_ForMatching` and `$ContactTypes_` variables can be modified to match the category types you use in ITG.
+
 ### Password Converter
 When using MyGlue we have found that you cannot restrict security access to embedded passwords. Embedded passwords are tied to the security of the asset they are embedded in. This does not provide the control we require so we decided to primarily use general passwords instead. This script can be used to mass convert embedded passwords into general passwords.
 
