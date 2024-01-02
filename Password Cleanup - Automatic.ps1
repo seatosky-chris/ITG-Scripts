@@ -26,6 +26,15 @@ $Email_APIKey = @{
 	Url = ""
 	Key = ""
 }
+# QP login info, if set this script will try to automatically update QP to ITG password matches after deleting a duplicate
+# This account must not use SSO, and can have MFA setup. If SSO is setup then to bypass SSO, this account must have the Super or Owner login role
+$QP_Login = @{
+	Email = ""
+	Password = ""
+	MFA_Secret = ""
+}
+$QP_BaseURI = ""
+$QPRateLimit = 12 # The max amount of iterations to process in Quickpass ($QPRateLimit x 50 = max customers/users/etc.)
 
 $EmailFrom = @{
 	Email = ''
@@ -115,6 +124,11 @@ Write-PSFMessage -Level Verbose -Message "Starting password cleanup."
 
 If (Get-Module -ListAvailable -Name "ITGlueAPI") {Import-module ITGlueAPI -Force} Else { install-module ITGlueAPI -Force; import-module ITGlueAPI -Force}
 
+if ($QP_Login.MFA_Secret) {
+	Unblock-File -Path ".\GoogleAuthenticator.psm1"
+	Import-Module ".\GoogleAuthenticator.psm1"
+}
+
 # Connect to IT Glue
 if ($ITGAPIKey.Key) {
 	Add-ITGlueBaseURI -base_uri $ITGAPIKey.Url
@@ -125,11 +139,193 @@ $ITGlueCompanies = Get-ITGlueOrganizations -page_size 1000
 
 if ($ITGlueCompanies -and $ITGlueCompanies.data) {
 	$ITGlueCompanies = $ITGlueCompanies.data | Where-Object { $_.attributes.'organization-status-name' -eq "Active" }
-	Write-PSFMessage -Level Verbose -Message "Cleaning up passwords in $($ITGlueCompanies.Count) companies."
+	Write-PSFMessage -Level Verbose -Message "Cleaning up passwords in $(($ITGlueCompanies | Measure-Object).Count) companies."
 }
 
 if (!$ITGlueCompanies) {
 	exit
+}
+
+$QPAuthResponse = $false
+$QPToITGCustomers = $false
+if ($QP_Login.Email) {
+	# Try to auth with QuickPass
+	$attempt = 3
+	while ($attempt -ge 0 -and !$QPAuthResponse) {
+		if ($attempt -eq 0) {
+			# Already tried 10x, lets give up and exit the script
+			Write-Error "Could not authenticate with QuickPass. Please verify the credentials and try again."
+		}
+
+		if ($QP_Login.MFA_Secret) {
+			$MFACode = Get-GoogleAuthenticatorPin -Secret $QP_Login.MFA_Secret
+			if ($MFACode.'Seconds Remaining' -le 5) {
+				# If the current code is about to expire, lets wait until a new one is ready to be generated to grab the code and try to login
+				Start-Sleep -Seconds ($MFACode.'Seconds Remaining' + 1)
+				$MFACode = Get-GoogleAuthenticatorPin -Secret $QP_Login.MFA_Secret
+			}
+
+			$FormBody = @{
+				email = $QP_Login.Email
+				password = $QP_Login.Password
+				accessCode = $MFACode."PIN Code" -replace " ", ""
+				isIframe = $false
+			} | ConvertTo-Json
+		} else {
+			$FormBody = @{
+				email = $QP_Login.Email
+				password = $QP_Login.Password
+				isIframe = $false
+			} | ConvertTo-Json
+		}
+
+		try {
+			$QPAuthResponse = Invoke-WebRequest "$($QP_BaseURI)auth/login" -SessionVariable 'QPWebSession' -Body $FormBody -Method 'POST' -ContentType 'application/json; charset=utf-8'
+		} catch {
+			$attempt--
+			Write-Host "Failed to connect to: QuickPass"
+			Write-Host "Status Code: $($_.Exception.Response.StatusCode.Value__)"
+			Write-Host "Message: $($_.Exception.Message)"
+			Write-Host "Status Description: $($_.Exception.Response.StatusDescription)"
+			start-sleep (get-random -Minimum 10 -Maximum 100)
+			continue
+		}
+		if (!$QPAuthResponse) {
+			$attempt--
+			Write-Host "Failed to connect to: QuickPass"
+			start-sleep (get-random -Minimum 10 -Maximum 100)
+			continue
+		}
+	}
+}
+if ($QPAuthResponse) {
+	if ((Test-Path -Path "./QPCustomerMatching.json")) {
+		$QPToITGCustomers = Get-Content -Raw -Path "./QPCustomerMatching.json" | ConvertFrom-Json
+	} else {
+		# No existing matching document from another script, query the matches manually
+		$Response = Invoke-WebRequest "$($QP_BaseURI)customer?page=1&rowsPerPage=50&searchText=&adStatus=ALL&localStatus=ALL&o365Status=ALL&filterUpdated=false" -WebSession $QPWebSession
+		$QP_Customers = $Response.Content | ConvertFrom-Json
+
+		if ($QP_Customers) {
+			$i = 1
+			while ($QP_Customers -and $QP_Customers.maxCount -gt $QP_Customers.clients.count -and $i -le $QPRateLimit) {
+				$i++
+				$Response = Invoke-WebRequest "$($QP_BaseURI)customer?page=$i&rowsPerPage=50&searchText=&adStatus=ALL&localStatus=ALL&o365Status=ALL&filterUpdated=false" -WebSession $QPWebSession
+				$QP_Customers_ToAdd = $Response.Content | ConvertFrom-Json
+				if ($QP_Customers_ToAdd -and $QP_Customers_ToAdd.clients) {
+					$QP_Customers.clients += $QP_Customers_ToAdd.clients
+				}
+			}
+
+			# Get QP to ITG matching info from QuickPass
+			$AuthHeaders = @{
+				Integration = "itglue"
+			}
+			$Response = Invoke-WebRequest "$($QP_BaseURI)integrations/matched-customers?page=1&rowsPerPage=50&searchText=&integrationType=itglue" -WebSession $QPWebSession -Headers $AuthHeaders
+			$QP_ITGMatching = $Response.Content | ConvertFrom-Json
+
+			if ($QP_ITGMatching -and $QP_ITGMatching.maxCount -gt $QP_ITGMatching.companies.Count) {
+				$i = 1
+				while ($QP_ITGMatching -and $QP_ITGMatching.maxCount -gt $QP_ITGMatching.companies.count -and $i -le $QPRateLimit) {
+					$i++
+					$Response = Invoke-WebRequest "$($QP_BaseURI)integrations/matched-customers?page=$i&rowsPerPage=50&searchText=&integrationType=itglue" -WebSession $QPWebSession -Headers $AuthHeaders
+					$QP_ITGMatching_ToAdd = $Response.Content | ConvertFrom-Json
+					if ($QP_ITGMatching_ToAdd -and $QP_ITGMatching_ToAdd.companies) {
+						$QP_ITGMatching.companies += $QP_ITGMatching_ToAdd.companies
+					}
+				}
+			}
+
+			$QPToITGCustomers = [System.Collections.ArrayList]::new()
+			foreach ($Customer in $QP_Customers.clients) {
+				$ITGMatch = $false
+				
+				# First look for any itg matches made in QP
+				$ITGMatches = $QP_ITGMatching.companies | Where-Object { $_.customers.id -contains $Customer.id }
+
+				if ($ITGMatches) {
+					# Narrow down
+					if (($ITGMatches | Measure-Object).Count -gt 1) {
+						$ITGMatches_Temp = $ITGMatches | Where-Object { $_.status -eq "Active" }
+						if (($ITGMatches_Temp | Measure-Object).Count -gt 0) {
+							$ITGMatches = $ITGMatches_Temp
+						}
+					}
+					if (($ITGMatches | Measure-Object).Count -gt 1) {
+						$ITGMatches_Temp = $ITGMatches | Where-Object { $_.name -like  $Customer.name }
+						if (($ITGMatches_Temp | Measure-Object).Count -gt 0) {
+							$ITGMatches = $ITGMatches_Temp
+						}
+					}
+					if (($ITGMatches | Measure-Object).Count -gt 1) {
+						$ITGMatches_Temp = $ITGMatches | Where-Object { $_.name -like  "*$($Customer.name)*" }
+						if (($ITGMatches_Temp | Measure-Object).Count -gt 0) {
+							$ITGMatches = $ITGMatches_Temp
+						}
+					}
+					if (($ITGMatches | Measure-Object).Count -gt 1) {
+						$ITGMatches_Temp = $ITGMatches | Where-Object { $Customer.name -like  "*$($_.name)*" }
+						if (($ITGMatches_Temp | Measure-Object).Count -gt 0) {
+							$ITGMatches = $ITGMatches_Temp
+						}
+					}
+					if (($ITGMatches | Measure-Object).Count -gt 1) {
+						$ITGMatches_Temp = $ITGMatches | Where-Object { $_.type -eq "Customer" }
+						if (($ITGMatches_Temp | Measure-Object).Count -gt 0) {
+							$ITGMatches = $ITGMatches_Temp
+						}
+					}
+					$ITGMatch = $ITGMatches | Select-Object -First 1
+
+					if ($ITGMatch) {
+						$ITGCompany = $ITGlueCompanies | Where-Object { $_.id -eq $ITGMatch.id }
+						if ($ITGCompany) {
+							$QPToITGCustomers.Add(@{
+								QP = $Customer
+								ITG = $ITGCompany
+							})
+						}
+						continue
+					}
+				}
+
+				# If no matching with ITG is setup, try to find a match just by name
+				if (!$ITGMatch -and $Customer.integrations.itglue.active -eq $true) {
+					$ITGMatches = $ITGlueCompanies | Where-Object { $_.attributes.name -like $Customer.Name }
+					if (!$ITGMatches) {
+						$ITGMatches = $ITGlueCompanies | Where-Object { $_.attributes.name -like  "*$($Customer.name)*" }
+					}
+					if (!$ITGMatches) {
+						$ITGMatches = $ITGlueCompanies | Where-Object { $Customer.name -like  "*$($_.attributes.name)*" }
+					}
+
+					if ($ITGMatches) {
+						# Narrow down
+						if (($ITGMatches | Measure-Object).Count -gt 1) {
+							$ITGMatches_Temp = $ITGMatches | Where-Object { $_.attributes."organization-status-name" -eq "Active" }
+							if (($ITGMatches_Temp | Measure-Object).Count -gt 0) {
+								$ITGMatches = $ITGMatches_Temp
+							}
+						}
+						if (($ITGMatches | Measure-Object).Count -gt 1) {
+							$ITGMatches_Temp = $ITGMatches | Where-Object { $_.attributes."organization-type-name" -eq "Customer" }
+							if (($ITGMatches_Temp | Measure-Object).Count -gt 0) {
+								$ITGMatches = $ITGMatches_Temp
+							}
+						}
+						$ITGMatch = $ITGMatches | Select-Object -First 1
+
+						if ($ITGMatch) {
+							$QPToITGCustomers.Add(@{
+								QP = $Customer
+								ITG = $ITGMatch
+							})
+						}
+					}
+				}
+			}
+		}
+	}
 }
 
 # Get password matching last updated time
@@ -148,6 +344,8 @@ $FlexAssetID_Email = (Get-ITGlueFlexibleAssetTypes -filter_name $ITG_EmailFlexAs
 $PasswordCategories = (Get-ITGluePasswordCategories).data
 
 $QPMatchingFixes = [System.Collections.ArrayList]::new()
+$QPUsersByOrg = @{}
+$QPUserDetailsCache = @{}
 
 # Takes a password category ID and returns the name of the category
 function Get-PasswordCategoryNameByID ($CategoryID) {
@@ -246,6 +444,159 @@ function Get-PasswordCategory ($PasswordName, $DefaultCategory = $false, $ForceT
 	}
 	
 	return $Category
+}
+
+# This function will try to find a Quickpass user based on an ITG password
+# It will search for users with the same/similar username or name
+# and then query each similar user in QP to see if their ITG match matches the password provided
+#
+# $QPCustomerID - the ID of the Quickpass customer to search
+# $CurITGPassword - the ITG password we are trying to find in QP, it will look for the QP user matched with this password currently
+# $RelatedITGPassword - optional, any related or new password that we can also use the info from for searching, this password is not currently matched to the QP user
+function Get-QPUserFromITG ($QPCustomerID, $CurITGPassword, $RelatedITGPassword = $false) {
+	# Get all users for this customer (from the cache if possible, if not, live query then cache)
+	if ($QPUsersByOrg.$QPCustomerID -and ($QPUsersByOrg.$QPCustomerID | Measure-Object).Count -gt 0) {
+		$QP_EndUsers = $QPUsersByOrg.$QPCustomerID
+	} else {
+		$Response = Invoke-WebRequest "$($QP_BaseURI)customer/$($QPCustomerID)/users?status=allActive&accountStatus=all&userAppType=all&page=1&type=standard&rowsPerPage=50&qpStatus=all&searchText=" -WebSession $QPWebSession
+		$QP_EndUsers = $Response.Content | ConvertFrom-Json
+
+		if ($QP_EndUsers -and $QP_EndUsers.maxCount -gt $QP_EndUsers.users.Count) {
+			$i = 1
+			while ($QP_EndUsers -and $QP_EndUsers.maxCount -gt $QP_EndUsers.users.count -and $i -le $QPRateLimit) {
+				$i++
+				$Response = Invoke-WebRequest "$($QP_BaseURI)customer/$($QPCustomerID)/users?status=allActive&accountStatus=all&userAppType=all&page=$i&type=standard&rowsPerPage=50&qpStatus=all&searchText=" -WebSession $QPWebSession
+				$QP_EndUsers_ToAdd = $Response.Content | ConvertFrom-Json
+				if ($QP_EndUsers_ToAdd -and $QP_EndUsers_ToAdd.users) {
+					$QP_EndUsers.users += $QP_EndUsers_ToAdd.users
+				}
+			}
+		}
+
+		if ($QP_EndUsers -and $QP_EndUsers.users) {
+			$QPUsersByOrg.$QPCustomerID = $QP_EndUsers
+			$QPUserDetailsCache.$QPCustomerID = @{}
+		}
+	}
+
+	# Get possible matching users
+	$CurUsername = $CurITGPassword.attributes.username.Replace("*", "").Replace("?", "").Replace("[", "").Replace("]", "")
+	$RelatedUsername = $RelatedITGPassword.attributes.username.Replace("*", "").Replace("?", "").Replace("[", "").Replace("]", "")
+	if (!$CurUsername) {
+		$CurUsername = "THIS WILL NOT MATCH"
+	}
+	if (!$RelatedUsername) {
+		$RelatedUsername = "THIS WILL NOT MATCH"
+	}
+
+	$Related_QPUsers = $QP_EndUsers.users | Where-Object { 
+		($_.email -and ($_.email -like $CurUsername -or $_.email -like "$($CurUsername)@*")) -or
+		($_.email -and ($_.email -like $RelatedUsername -or $_.email -like "$($RelatedUsername)@*")) -or
+		($_.userPrincipalName -and ($_.userPrincipalName -like $CurUsername -or $_.userPrincipalName -like $RelatedUsername)) -or
+		($_.samAccountName -and ($_.samAccountName -like $CurUsername -or $_.samAccountName -like $RelatedUsername)) -or
+		$CurITGPassword.attributes.name -like "*$($_.displayName)*" -or $RelatedITGPassword.attributes.name -like "*$($_.displayName)*"
+	}
+
+	if (!$Related_QPUsers) {
+		return $false
+	}
+
+	# Narrow down if necessary
+	if (($Related_QPUsers | Measure-Object).Count -gt 10) {
+		$Related_QPUsers_Temp = $Related_QPUsers | Where-Object {
+			$_.userPrincipalName -and ($_.userPrincipalName -like $CurUsername -or $_.userPrincipalName -like $RelatedUsername)
+		}
+		if (($Related_QPUsers_Temp | Measure-Object).Count -gt 0) {
+			$Related_QPUsers = $Related_QPUsers_Temp
+		}
+
+		if (($Related_QPUsers | Measure-Object).Count -gt 10) {
+			$Related_QPUsers_Temp = $Related_QPUsers | Where-Object {
+				$_.samAccountName -and ($_.samAccountName -like $CurUsername -or $_.samAccountName -like $RelatedUsername)
+			}
+			if (($Related_QPUsers_Temp | Measure-Object).Count -gt 0) {
+				$Related_QPUsers = $Related_QPUsers_Temp
+			}
+		}
+
+		if (($Related_QPUsers | Measure-Object).Count -gt 10) {
+			$Related_QPUsers_Temp = $Related_QPUsers | Where-Object {
+				$_.email -and
+					($_.email -like $CurUsername -or $_.email -like "$($CurUsername)@*" -or
+					$_.email -like $RelatedUsername -or $_.email -like "$($RelatedUsername)@*")
+			}
+			if (($Related_QPUsers_Temp | Measure-Object).Count -gt 0) {
+				$Related_QPUsers = $Related_QPUsers_Temp
+			}
+		}
+
+		if (($Related_QPUsers | Measure-Object).Count -gt 10) {
+			$Related_QPUsers_Temp = $Related_QPUsers | Where-Object {
+				$CurITGPassword.attributes.name -like "$($_.displayName)*" -or $RelatedITGPassword.attributes.name -like "$($_.displayName)*"
+			}
+			if (($Related_QPUsers_Temp | Measure-Object).Count -gt 0) {
+				$Related_QPUsers = $Related_QPUsers_Temp
+			}
+		}
+	}
+
+	if (($Related_QPUsers | Measure-Object).Count -gt 15) {
+		# Too many matches, something is wrong
+		return $false
+	}
+
+	# Check each related QP User to see if they are associated with $CurITGPassword
+	$Best_QPMatches = @()
+	foreach ($QPUser in $Related_QPUsers) {
+		if ($QPUser.integrations.itglue.active -eq $false) {
+			continue
+		}
+
+		# Query the user in QP to see what ITG password they are matched with
+		$QP_UserDetails = $false
+		if ($QPUserDetailsCache.$QPCustomerID.($QPUser.qpId)) {
+			$QP_UserDetails = $QPUserDetailsCache.$QPCustomerID.($QPUser.qpId)
+		} else {
+			$AuthHeaders = @{
+				Integration = "itglue"
+			}
+			try {
+				$Response = Invoke-WebRequest "$($QP_BaseURI)integrations/accounts/$($QPUser.qpId)?customer_id=$($QPCustomerID)" -WebSession $QPWebSession -Headers $AuthHeaders
+				$QP_UserDetails = $Response.Content | ConvertFrom-Json
+			} catch {
+				if ($_.Exception.Response.StatusCode.Value__ -eq 404) {
+					$QPUser.integrations.itglue.active = $false
+					continue
+				}
+			}
+
+			if ($QP_UserDetails) {
+				$QPUserDetailsCache.$QPCustomerID.($QPUser.qpId) = $QP_UserDetails
+			}
+		}
+ 
+		if ($QP_UserDetails -and $QP_UserDetails.id -eq $CurITGPassword.id) {
+			$Best_QPMatches += $QPUser
+		}
+	}
+
+	if (!$Best_QPMatches -or ($Best_QPMatches | Measure-Object).Count -lt 1) {
+		# No ITG matches found, see if there are any that aren't matched with ITG
+		$Best_QPMatches = $Related_QPUsers | Where-Object { $_.integrations.itglue.active -eq $false }
+
+		if (($Best_QPMatches | Measure-Object).Count -gt 3) {
+			$Best_QPMatches = @()
+		}
+	}
+
+	if (!$Best_QPMatches -or ($Best_QPMatches | Measure-Object).Count -lt 1) {
+		# No matches found
+		return $false
+	}
+
+	$Best_QPMatches = $Best_QPMatches | Sort-Object -Property qpID -Unique
+
+	return @($Best_QPMatches)
 }
 
 # Run through each company and get/compare passwords for cleanup
@@ -652,20 +1003,11 @@ foreach ($Company in $ITGlueCompanies) {
 				}
 
 				# Delete duplicate quickpass password and add to the QP Matching Fixes list
+				$DeleteSuccessful = $false
 				try {
 					$null = Remove-ITGluePasswords -id $Password.id -ErrorAction Stop
 					$ITGPasswords = $ITGPasswords | Where-Object { $_.id -ne $Password.id }
-
-					$QPMatchingFixes.Add([PSCustomObject]@{
-						Company = $Company.attributes.name
-						id = $Password.id
-						Name = $Password.attributes.name
-						Link = $Password.attributes.'resource-url'
-						Related = @($RelatedPasswords.attributes.'resource-url') -join " "
-						FixType = "Duplicate - Deleted. Update QP Matching for password."
-					})
-					Write-PSFMessage -Level Verbose -Message "Deleted duplicate password: '$($Password.attributes.name)' (Link: $($Password.attributes.'resource-url')) - in favour of: $(@($RelatedPasswords.attributes.'resource-url') -join ", ")"
-					Write-PSFMessage -Level Verbose -Message "Emailed Suggestion:: Duplicate Deleted, Update QP Matching: '$($Password.attributes.name)' (Link: $($Password.attributes.'resource-url')) (Related: $(@($RelatedPasswords.attributes.'resource-url') -join " ")) - suggestion: update QP matching"
+					$DeleteSuccessful = $true
 				} catch {
 					$QPMatchingFixes.Add([PSCustomObject]@{
 						Company = $Company.attributes.name
@@ -677,6 +1019,100 @@ foreach ($Company in $ITGlueCompanies) {
 					})
 
 					Write-PSFMessage -Level Verbose -Message "Emailed Suggestion:: Delete duplicate password: '$($Password.attributes.name)' (Link: $($Password.attributes.'resource-url')) (Related: $(@($RelatedPasswords.attributes.'resource-url') -join " ")) - suggestion: delete duplicate and update QP matching"
+				}
+
+				if ($DeleteSuccessful) {
+					# Duplicate deleted, if we are authed with Quickpass, try updating the QP match for this password
+					$AutoUpdated = $false
+					if ($QPAuthResponse -and $QPWebSession -and ($RelatedPasswords | Measure-Object).Count -eq 1) {
+						$OrgMatch = $QPToITGCustomers | Where-Object { $_.ITG.id -eq $Company.id }
+
+						if ($OrgMatch -and $OrgMatch.QP.ID) {
+							$QPCustomerID = $OrgMatch.QP.ID
+							$QPUsers = Get-QPUserFromITG -QPCustomerID $QPCustomerID -CurITGPassword $Password -RelatedITGPassword $RelatedPasswords
+							
+							if ($QPUsers) {
+								foreach ($QPUser in $QPUsers) {
+									$AuthHeaders = @{
+										Integration = "itglue"
+									}
+									$Body = @{
+										accountId = $QPUser.qpId
+										customerId = $QPCustomerID
+									}
+									# Delete the current match
+									$Response = Invoke-WebRequest "$($QP_BaseURI)integrations/accounts/matches" -WebSession $QPWebSession -Headers $AuthHeaders -Body $Body -Method Delete -ContentType 'application/x-www-form-urlencoded'
+									
+									# Make a new match
+									$Body = @{
+										allSelected = $false
+										customerId = $QPCustomerID
+										excludedIds = @()
+										includedIds = @()
+										integrationType = "itglue"
+										matchType = "ALL"
+										matches = @{
+											$QPUser.qpId = @{
+												autoMatch = $false
+												displayName = $QPUser.displayName
+												id = "$($RelatedPassword.id)"
+												name = $RelatedPassword.attributes.name
+												_id = $QPUser.qpId
+											}
+										}
+										searchText = ""
+										userType = "standard"
+									}
+
+									$Params = @{
+										Method = "Post"
+										Uri = "$($QP_BaseURI)integrations/accounts/matches/createjob"
+										Body = ($Body | ConvertTo-Json -Depth 10)
+										ContentType = "application/json"
+										Headers = $AuthHeaders
+										WebSession = $QPWebSession
+									}
+
+									try {
+										$Response = Invoke-RestMethod @Params
+										if ($Response -and $Response.message -like "Matching Changes Submitted") {
+											$AutoUpdated = $true
+										}
+									} catch {
+										$AutoUpdated = $false
+									}
+
+									if ($AutoUpdated) {
+										Write-PSFMessage -Level Verbose -Message "Updated QP Matching (after duplicate deletion): '$($Password.attributes.name)' (Link: $($Password.attributes.'resource-url')) - in favour of: $(@($RelatedPasswords.attributes.'resource-url') -join ", ")"
+
+										# Temporary - for now sending an email to check on these auto matching updates
+										$QPMatchingFixes.Add([PSCustomObject]@{
+											Company = $Company.attributes.name
+											id = $Password.id
+											Name = $Password.attributes.name
+											Link = $Password.attributes.'resource-url'
+											Related = @($RelatedPasswords.attributes.'resource-url') -join " "
+											FixType = "Duplicate - Deleted. Auto updated QP matching. Please verify."
+										})
+									}
+								}
+							}
+						}
+					}
+
+					# If no QP authentication or auto updating didn't work, send an email to manually fix this
+					if (!$AutoUpdated) {
+						$QPMatchingFixes.Add([PSCustomObject]@{
+							Company = $Company.attributes.name
+							id = $Password.id
+							Name = $Password.attributes.name
+							Link = $Password.attributes.'resource-url'
+							Related = @($RelatedPasswords.attributes.'resource-url') -join " "
+							FixType = "Duplicate - Deleted. Update QP Matching for password."
+						})
+						Write-PSFMessage -Level Verbose -Message "Deleted duplicate password: '$($Password.attributes.name)' (Link: $($Password.attributes.'resource-url')) - in favour of: $(@($RelatedPasswords.attributes.'resource-url') -join ", ")"
+						Write-PSFMessage -Level Verbose -Message "Emailed Suggestion:: Duplicate Deleted, Update QP Matching: '$($Password.attributes.name)' (Link: $($Password.attributes.'resource-url')) (Related: $(@($RelatedPasswords.attributes.'resource-url') -join " ")) - suggestion: update QP matching"
+					}
 				}
 			} elseif (($RelatedPasswords | Measure-Object).count -gt 3) {
 				# More than 3 matches found, lets manually fix this
