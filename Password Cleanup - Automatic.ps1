@@ -349,7 +349,7 @@ foreach ($Company in $ITGlueCompanies) {
 	# Find passwords with an email category and no "@" in the username
 	$BadEmailPasswords = $ITGPasswords | Where-Object { $_.attributes.'password-category-name' -in @("Office 365", "Microsoft 365", "Microsoft 365 - Global Admin", "Azure AD", "Email Account") -and $_.attributes.'username' -notlike "*@*" }
 	if ($BadEmailPasswords) {
-		Write-PSFMessage -Level Warning -Message "Bad Email Passwords found without an @ in the email. $($BadEmailPasswords.Count) bad passwords found."
+		Write-PSFMessage -Level Warning -Message "Bad Email Passwords found without an @ in the email. $(($BadEmailPasswords | Measure-Object).Count) bad passwords found."
 	}
 	$BadEmailPasswords | ForEach-Object {
 		$QPMatchingFixes.Add([PSCustomObject]@{
@@ -874,6 +874,7 @@ foreach ($Company in $ITGlueCompanies) {
 
 		foreach ($Password in $ToMatch_Passwords) {
 			$PasswordDetails = Get-ITGluePasswords -id $Password.id -include "related_items"
+			$AllRelatedItems = $PasswordDetails.included | Where-Object { $_.type -eq "related-items" }
 			$CurRelatedItems = $PasswordDetails.included | Where-Object { $_.type -eq "related-items" -and $_.attributes.archived -eq $false }
 			$PasswordCategory = $Password.attributes.'password-category-name'
 
@@ -940,6 +941,7 @@ foreach ($Company in $ITGlueCompanies) {
 				}
 
 				$ConfigMatches = $ConfigMatches | Sort-Object -Property id -Unique
+				$ConfigMatches = $ConfigMatches | Where-Object { $_.id -notin $AllRelatedItems.attributes.'resource-id' }
 				if (($ConfigMatches | Measure-Object).Count -gt 3) {
 					$ConfigMatches = @()
 				}
@@ -1072,6 +1074,7 @@ foreach ($Company in $ITGlueCompanies) {
 
 				if ($AllContactMatches -and ($AllContactMatches | Measure-Object).Count -gt 0) {
 					$AllContactMatches = $AllContactMatches | Sort-Object -Property id -Unique
+					$AllContactMatches = $AllContactMatches | Where-Object { $_.id -notin $AllRelatedItems.attributes.'resource-id' }
 
 					if (($AllContactMatches | Measure-Object).Count -gt 3) {
 						$AllContactMatches = @()
@@ -1334,7 +1337,7 @@ if ($QPMatchingFixes -and $Email_APIKey -and $Email_APIKey.Key) {
 	}
 	
 	Invoke-RestMethod -Method Post -Uri $Email_APIKey.Url -Body $mailbody -Headers $headers -ContentType application/json
-	Write-PSFMessage -Level Verbose -Message "Sent QPMatchingFixes manual cleanup email with $($QPMatchingFixes.Count) issues."
+	Write-PSFMessage -Level Verbose -Message "Sent QPMatchingFixes manual cleanup email with $(($QPMatchingFixes | Measure-Object).Count) issues."
 }
 
 Write-PSFMessage -Level Verbose -Message "Script Complete."
