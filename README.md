@@ -26,6 +26,20 @@ Additionally, you will need to open the PhoneNumberFormatter project and then ha
 ### ITG Flexible Asset Fields Backup
 This script backs up all flexible assets in ITG. It will create a folder with a date/timestamp each time it runs a backup, and in the folder is a separate json file for each flexible asset. These json files contain info on the flexible asset itself, and all fields within it. It should be all the info needed for recreating these flexible asset templates. Once complete, it will cleanup old backups, keeping a configurable amount of days worth of backups. The script is designed to be ran once a day, but you can run it more or less often.
 
+### Quickpass Cleanup
+This script is used to cleanup passwords in Quickpass and to setup default settings. It is intended for a Quickpass setup that is connected to ITG and Autotask. It is best used in conjunction with the Password Cleanup script below, which will cleanup data in ITG, helping this script with fixing password matching to ITG and Autotask. This cleanup focuses on fixing matches between QP and ITG/Autotask, phone numbers and emails, and setting up default settings. If any issues cannot be fixed manually, an email will be sent with a list of those issues for manual fixing.
+
+These are the main things the cleanup will attempt to fix:
+- Updates password matches between Quickpass and ITGlue/Autotask for any unmatched passwords
+- Alerts on any companies that are not matched with ITG/Autotask
+- Updates phone numbers in QP from Autotask contacts (will overwrite from ITG the first time unless the user answered an onboarding email)
+  - If not updating from Autotask, it will clean up the phone number if it doesn't properly start with the country code
+- Updates emails from Autotask contacts if missing in QP
+- Sets up default rotation settings on any organizations without this setup
+- Finds any AD servers (from the ITG Active Directory flexible asset) without a QP agent and reports these for install
+
+To setup the script up you will need to fill in an ITG API key (with full password access) and optionally, an email API key from the Automation Mailer (or SendGrid or something similar). Setup the EmailFrom and EmailTo if setting up the email API key. You will also need to create a non-SSO account in Quickpass, it can have MFA. If SSO is setup then to bypass SSO, this account must have the Super or Owner login role. If the QP account has MFA, add the MFA secret and be sure to include the `GoogleAuthenticator.psm1` file in the same folder as this script. The `$EmailCategories` are the ITG password categories that are associated with email account passwords. You will also need to set the name of your Active Directory flexible asset in ITG, it will look at the `ad-servers` field to find any AD servers that are missing the QP agent.
+
 ### Password Cleanup
 This script can be used to cleanup password documentation in ITG. There are 2 versions, one manual version that allows you to step through and manually approve various changes (others are done automatically), and an automatic version that can be run daily unattended to fix most issues that don't need manual intervention. The automatic version will send out an email with any manual changes that need to be looked into or completed. This cleanup has mainly been created to help cleanup naming/categorization and to assist in matching with Quickpass, and cleaning up issues that Quickpass creates in our documentation. This is focused on user passwords and requires an AD and Email asset to be setup in ITG. Additionally, we use a password naming convention of `Type - Asset or User` (e.g. "AD & O365 - Test User"), this script heavily relies on that naming convention and will set password names to use that convention.
 
