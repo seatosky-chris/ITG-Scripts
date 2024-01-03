@@ -337,6 +337,11 @@ if ((Test-Path -Path ("$ScriptPath\passwordMatching_lastUpdated.txt"))) {
 	}
 }
 
+$QPPasswordMatch_Cache = $false
+if ((Test-Path -Path "./QPPasswordMatchingCache.json")) {
+	$QPPasswordMatch_Cache = Get-Content -Raw -Path "./QPPasswordMatchingCache.json" | ConvertFrom-Json
+}
+
 # Get the flexible asset IDs
 $FlexAssetID_AD = (Get-ITGlueFlexibleAssetTypes -filter_name $ITG_ADFlexAsset).data
 $FlexAssetID_Email = (Get-ITGlueFlexibleAssetTypes -filter_name $ITG_EmailFlexAsset).data
@@ -476,6 +481,17 @@ function Get-QPUserFromITG ($QPCustomerID, $CurITGPassword, $RelatedITGPassword 
 		if ($QP_EndUsers -and $QP_EndUsers.users) {
 			$QPUsersByOrg.$QPCustomerID = $QP_EndUsers
 			$QPUserDetailsCache.$QPCustomerID = @{}
+		}
+	}
+
+	# Check if we have the cached QP to ITG user matching from the Quickpass cleanup, if so, get the match directly from there
+	if ($QPPasswordMatch_Cache -and $QPPasswordMatch_Cache.customers -and $QPPasswordMatch_Cache.customers.$QPCustomerID) {
+		$CachedMatch = $QPPasswordMatch_Cache.customers.$QPCustomerID.PSObject.Properties | Where-Object { $_.Value.ITG -like $CurITGPassword.id }
+		if ($CachedMatch) {
+			$MatchedUser = $QP_EndUsers.users | Where-Object { $_.qpId -eq $CachedMatch.Name }
+			if ($MatchedUser) {
+				return @($MatchedUser)
+			}
 		}
 	}
 
