@@ -4,7 +4,7 @@
 # Created Date: Tuesday, December 5th 2023, 3:56:52 pm
 # Author: Chris Jantzen
 # -----
-# Last Modified: Tue Jan 02 2024
+# Last Modified: Mon Jan 22 2024
 # Modified By: Chris Jantzen
 # -----
 # Copyright (c) 2023 Sea to Sky Network Solutions
@@ -646,30 +646,32 @@ foreach ($Organization in $Organizations) {
 		}
 	}
 
-	# Get AD servers (from ITG) and check for any without a QP agent
-	$ITG_ADAssets = (Get-ITGlueFlexibleAssets -filter_flexible_asset_type_id $ITG_ADFilterID.id -filter_organization_id $Organization.ITG.id).data
-	if ($ITG_ADAssets) {
-		$ITG_ADAssets = $ITG_ADAssets | Where-Object { !$_.attributes.archived }
-	}
-	$ITG_ADServers = $ITG_ADAssets | ForEach-Object { $_.attributes.traits.'ad-servers' } | ForEach-Object { $_.values }
+	if ($Organization.ITG) {
+		# Get AD servers (from ITG) and check for any without a QP agent
+		$ITG_ADAssets = (Get-ITGlueFlexibleAssets -filter_flexible_asset_type_id $ITG_ADFilterID.id -filter_organization_id $Organization.ITG.id).data
+		if ($ITG_ADAssets) {
+			$ITG_ADAssets = $ITG_ADAssets | Where-Object { !$_.attributes.archived }
+		}
+		$ITG_ADServers = $ITG_ADAssets | ForEach-Object { $_.attributes.traits.'ad-servers' } | ForEach-Object { $_.values }
 
-	if ($ITG_ADServers) {
-		$Response = Invoke-WebRequest "$($QP_BaseURI)customer/agents/$($Organization.QP.id)/?page=1&rowsPerPage=50&searchText=" -WebSession $QPWebSession
-		$QPAgents = $Response.Content | ConvertFrom-Json
+		if ($ITG_ADServers) {
+			$Response = Invoke-WebRequest "$($QP_BaseURI)customer/agents/$($Organization.QP.id)/?page=1&rowsPerPage=50&searchText=" -WebSession $QPWebSession
+			$QPAgents = $Response.Content | ConvertFrom-Json
 
-		foreach ($ADServer in $ITG_ADServers) {
-			if ($ADServer.name -notin $QPAgents.agents.serverName) {
-				# Found server missing a QP agent
-				$ServerAsset = (Get-ITGlueConfigurations -id $ADServer.id -organization_id $Organization.ITG.id).data
+			foreach ($ADServer in $ITG_ADServers) {
+				if ($ADServer.name -notin $QPAgents.agents.serverName) {
+					# Found server missing a QP agent
+					$ServerAsset = (Get-ITGlueConfigurations -id $ADServer.id -organization_id $Organization.ITG.id).data
 
-				if ($ServerAsset -and !$ServerAsset.attributes.archived -and $ServerAsset.attributes.notes -notlike "*# Ignore QP Agent Installs*") {
-					Write-Output "Found AD Server in ITG without a QP Agent: $($ADServer.name)"
-					$QPFixes.Add([PSCustomObject]@{
-						Company = $Organization.QP.name
-						id = $Organization.QP.id
-						Name = $Organization.QP.name
-						FixType = "Found AD Server Missing the QP Agent: $($ADServer.name)  (To Ignore, add '# Ignore QP Agent Installs' to the config notes in ITG)"
-					})
+					if ($ServerAsset -and !$ServerAsset.attributes.archived -and $ServerAsset.attributes.notes -notlike "*# Ignore QP Agent Installs*") {
+						Write-Output "Found AD Server in ITG without a QP Agent: $($ADServer.name)"
+						$QPFixes.Add([PSCustomObject]@{
+							Company = $Organization.QP.name
+							id = $Organization.QP.id
+							Name = $Organization.QP.name
+							FixType = "Found AD Server Missing the QP Agent: $($ADServer.name)  (To Ignore, add '# Ignore QP Agent Installs' to the config notes in ITG)"
+						})
+					}
 				}
 			}
 		}
@@ -718,7 +720,7 @@ foreach ($Organization in $Organizations) {
 	$No_ATIntegration = $No_ATIntegration | Where-Object { $_.qpID -notin $QPPasswordMatch_Cache.matchAttempted.($Organization.QP.id).PSObject.Properties.Name -or 'AT' -notin $QPPasswordMatch_Cache.matchAttempted.($Organization.QP.id).($_.qpID) }
 
 	$Updates = 0
-	if (($No_ITGIntegration | Measure-Object).Count -gt 0) {
+	if ($Organization.ITG -and ($No_ITGIntegration | Measure-Object).Count -gt 0) {
 		# Found passwords without an ITG match
 
 		# Get ITG passwords
