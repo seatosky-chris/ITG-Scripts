@@ -55,7 +55,7 @@ $EmailTo = @(
 	}
 )
 
-$RateLimit = 12 # The max amount of iterations to process in Quickpass ($RateLimit x 50 = max customers/users/etc.)
+$RateLimit = 20 # The max amount of iterations to process in Quickpass ($RateLimit x 50 = max customers/users/etc.)
 $EmailCategories = @("Azure AD", "Email Account", "Microsoft 365", "Office 365", "Microsoft 365 - Global Admin") # Email password categories
 
 $ITG_ADFlexAssetName = "Active Directory"
@@ -979,7 +979,7 @@ foreach ($Organization in $Organizations) {
 		# Found passwords without an Autotask match
 
 		# Find best match (if one exists)
-		foreach ($QPUser in $No_ATIntegration) {	
+		:userLoop foreach ($QPUser in $No_ATIntegration) {	
 			$QPEmail = $QPUser.email.Replace("*", "?").Replace("[", "?").Replace("]", "?")
 			$QPSamAccountName = $QPUser.samAccountName.Replace("*", "?").Replace("[", "?").Replace("]", "?")
 			$QPUserPrincipalName = $QPUser.userPrincipalName.Replace("*", "?").Replace("[", "?").Replace("]", "?")
@@ -1001,13 +1001,13 @@ foreach ($Organization in $Organizations) {
 				$QPUserPrincipalName = "THIS WILL NOT MATCH"
 			}
 
-			$Related_ATUsers = $Autotask_Contacts | Where-Object { 
+			$Related_ATUsers_InitSearch = $Autotask_Contacts | Where-Object { 
 				($_.emailAddress -and ($_.emailAddress -like $QPEmail -or $_.emailAddress -like "$($QPSamAccountName)@*" -or $_.emailAddress -like "$($QPUserPrincipalName)@*" -or $_.emailAddress -like "$($QPEmailStart)@*")) -or
 				($_.emailAddress2 -and ($_.emailAddress2 -like $QPEmail -or $_.emailAddress2 -like "$($QPSamAccountName)@*" -or $_.emailAddress2 -like "$($QPUserPrincipalName)@*" -or $_.emailAddress2 -like "$($QPEmailStart)@*")) -or
 				($_.emailAddress3 -and ($_.emailAddress3 -like $QPEmail -or $_.emailAddress3 -like "$($QPSamAccountName)@*" -or $_.emailAddress3 -like "$($QPUserPrincipalName)@*" -or $_.emailAddress3 -like "$($QPEmailStart)@*")) -or
 				(($_.firstName -or $_.lastName) -and (($QPUser.displayName -like "*$($_.firstName)*" -and $QPUser.displayName -like "*$($_.lastName)*") -or $QPUser.displayName -like "*$($_.firstName) $($_.lastName)*" -or $QPUser.displayName -like $_.firstName))
 			}
-			$Related_ATUsers = $Related_ATUsers | Where-Object { $_.isActive }
+			$Related_ATUsers = $Related_ATUsers_InitSearch | Where-Object { $_.isActive }
 
 			# Narrow down if necessary
 			if (($Related_ATUsers | Measure-Object).Count -gt 1) {
@@ -1093,7 +1093,7 @@ foreach ($Organization in $Organizations) {
 				}
 			}
 
-			# Either add the new match, or send an email with a matching suggestion (if a subpar match)
+			# Either add the new match, send an email with a matching suggestion (if a subpar match), or create a new contact
 			if (($Related_ATUsers | Measure-Object).Count -gt 1) {
 				# Too many matches found, send an email with suggestions
 				$Suggestions = ($Related_ATUsers | ForEach-Object { "$($_.firstName) $($_.lastName) ($($_.id))" }) -join ", "
@@ -1185,6 +1185,296 @@ foreach ($Organization in $Organizations) {
 							Name = $QPUser.displayName
 							FixType = "Manual AT Match Required, automatch failed: $($Suggestion)"
 						})
+					}
+				}
+			} elseif (($Related_ATUsers | Measure-Object).Count -eq 0 -and $QPUser.enabled) {
+				# No related matches found at all, consider making a new contact in AT if this QP contact is enabled
+
+				$CreateNew = $true
+				if (($Related_ATUsers_InitSearch | Measure-Object).Count -gt 0) {
+					# Check if there is an existing inactive AT contact
+					$Related_ATUsers = $Related_ATUsers_InitSearch | Where-Object { !$_.isActive }
+
+					# Narrow down if necessary
+					if (($Related_ATUsers | Measure-Object).Count -gt 1) {
+						$Related_ATUsers_Temp = $Related_ATUsers | Where-Object {
+							(($_.firstName -or $_.lastName) -and (($QPUser.displayName -like "*$($_.firstName)*" -and $QPUser.displayName -like "*$($_.lastName)*") -or $QPUser.displayName -like "*$($_.firstName) $($_.lastName)*"))
+						}
+						if (($Related_ATUsers_Temp | Measure-Object).Count -gt 0) {
+							$Related_ATUsers = $Related_ATUsers_Temp
+						}
+
+						if (($Related_ATUsers | Measure-Object).Count -gt 1) {
+							$Related_ATUsers_Temp = $Related_ATUsers | Where-Object {
+								$_.firstName -and $QPUser.displayName -like $_.firstName -and (!$_.lastName -or $_.lastName -like ".")
+							}
+							if (($Related_ATUsers_Temp | Measure-Object).Count -gt 0) {
+								$Related_ATUsers = $Related_ATUsers_Temp
+							}
+						}
+
+						if (($Related_ATUsers | Measure-Object).Count -gt 1) {
+							$Related_ATUsers_Temp = $Related_ATUsers | Where-Object {
+								$_.lastName -and $QPUser.displayName -like "*$($_.lastName)*"
+							}
+							if (($Related_ATUsers_Temp | Measure-Object).Count -gt 0) {
+								$Related_ATUsers = $Related_ATUsers_Temp
+							}
+						}
+
+						if (($Related_ATUsers | Measure-Object).Count -gt 1) {
+							$Related_ATUsers_Temp = $Related_ATUsers | Where-Object {
+								$_.lastName -and $_.lastName -notlike "*(Old)*"
+							}
+							if (($Related_ATUsers_Temp | Measure-Object).Count -gt 0) {
+								$Related_ATUsers = $Related_ATUsers_Temp
+							}
+						}
+
+						if (($Related_ATUsers | Measure-Object).Count -gt 1) {
+							$Related_ATUsers_Temp = $Related_ATUsers | Where-Object {
+								$_.lastName -and $_.lastName -notlike "*Disabled*"
+							}
+							if (($Related_ATUsers_Temp | Measure-Object).Count -gt 0) {
+								$Related_ATUsers = $Related_ATUsers_Temp
+							}
+						}
+
+						if (($Related_ATUsers | Measure-Object).Count -gt 1) {
+							$Related_ATUsers_Temp = $Related_ATUsers | Where-Object {
+								($_.emailAddress -and $_.emailAddress -like $QPEmail)
+							}
+							if (($Related_ATUsers_Temp | Measure-Object).Count -gt 0) {
+								$Related_ATUsers = $Related_ATUsers_Temp
+							}
+						}
+
+						if (($Related_ATUsers | Measure-Object).Count -gt 1) {
+							$Related_ATUsers_Temp = $Related_ATUsers | Where-Object {
+								($_.emailAddress -and ($_.emailAddress -like "$($QPSamAccountName)@*" -or $_.emailAddress -like "$($QPUserPrincipalName)@*" -or $_.emailAddress -like "$($QPEmailStart)@*"))
+							}
+							if (($Related_ATUsers_Temp | Measure-Object).Count -gt 0) {
+								$Related_ATUsers = $Related_ATUsers_Temp
+							}
+						}
+
+						if (($Related_ATUsers | Measure-Object).Count -gt 1) {
+							$Related_ATUsers_Temp = $Related_ATUsers | Where-Object {
+								($_.emailAddress2 -and $_.emailAddress2 -like $QPEmail) -or
+								($_.emailAddress3 -and $_.emailAddress3 -like $QPEmail)
+							}
+							if (($Related_ATUsers_Temp | Measure-Object).Count -gt 0) {
+								$Related_ATUsers = $Related_ATUsers_Temp
+							}
+						}
+
+						if (($Related_ATUsers | Measure-Object).Count -gt 1) {
+							$Related_ATUsers_Temp = $Related_ATUsers | Where-Object {
+								($_.emailAddress2 -and ($_.emailAddress2 -like "$($QPSamAccountName)@*" -or $_.emailAddress2 -like "$($QPUserPrincipalName)@*" -or $_.emailAddress2 -like "$($QPEmailStart)@*")) -or
+								($_.emailAddress3 -and ($_.emailAddress3 -like "$($QPSamAccountName)@*" -or $_.emailAddress3 -like "$($QPUserPrincipalName)@*" -or $_.emailAddress3 -like "$($QPEmailStart)@*"))
+							}
+							if (($Related_ATUsers_Temp | Measure-Object).Count -gt 0) {
+								$Related_ATUsers = $Related_ATUsers_Temp
+							}
+						}
+					}
+
+					if (($Related_ATUsers | Measure-Object).Count -gt 1) {
+						# Too many inactive matches found, send an email with suggestions
+						$Suggestions = ($Related_ATUsers | ForEach-Object { "$($_.firstName) $($_.lastName) ($($_.id))" }) -join ", "
+						$QPFixes.Add([PSCustomObject]@{
+							Company = $Organization.QP.name
+							id = $QPUser.qpId
+							Name = $QPUser.displayName
+							FixType = "Manual AT Match Required, found multiple suggestions for inactive AT contacts: $($Suggestions) [consider enabling & matching one]"
+						})
+						$CreateNew = $false
+					} elseif (($Related_ATUsers | Measure-Object).Count -gt 0) {
+						$Related_ATUser = $Related_ATUsers | Select-Object -First 1
+						$UnsafeMatch = $false
+
+						if ($Related_ATUser.firstName -and $QPUser.displayName -notlike "*$($Related_ATUser.firstName)*") {
+							$UnsafeMatch = $true
+						} elseif ($Related_ATUser.lastName -and $QPUser.displayName -notlike "*$($Related_ATUser.lastName)*") {
+							$UnsafeMatch = $true
+						}
+						if ($Related_ATUser.firstName -and $Related_ATUser.lastName -and $QPUser.displayName -like "*$($Related_ATUser.firstName) $($Related_ATUser.lastName)*") {
+							$UnsafeMatch = $false
+						}
+						if ($Related_ATUser.firstName -and $QPUser.displayName -like $Related_ATUser.firstName -and (!$Related_ATUser.lastName -or $Related_ATUser.lastName -like ".")) {
+							$UnsafeMatch = $false
+						}
+
+						if ($UnsafeMatch) {
+							# No name match, send an email with the suggestion to be safe
+							$Suggestion = "$($Related_ATUser.firstName) $($Related_ATUser.lastName) ($($Related_ATUser.id))"
+							$QPFixes.Add([PSCustomObject]@{
+								Company = $Organization.QP.name
+								id = $QPUser.qpId
+								Name = $QPUser.displayName
+								FixType = "Manual AT Match Required, name doesn't match for inactive AT contact: $($Suggestion) [consider enabling & matching]"
+							})
+							$CreateNew = $false
+						} else {
+							# Only 1 match found and it has a name match, looks safe, re-activated the AT contact and auto update match!
+
+							# Reactivate
+							$Updated_ATUser = $Related_ATUser.PsObject.Copy()
+							$Updated_ATUser.isActive = 1
+							$Updated_ATUser.PSObject.Properties.Remove('id')
+							Set-AutotaskAPIResource -Resource CompanyContactsChild -ParentID $Organization.AT.id -ID $Related_ATUser.id -body $Updated_ATUser
+
+							# Matching
+							$Headers = @{
+								Integration = "dattoAutoTask"
+							}
+							$Body = @{
+								allSelected = $false
+								customerId = $Organization.QP.id
+								excludedIds = @()
+								includedIds = @()
+								integrationType = "dattoAutoTask"
+								matchType = "ALL"
+								matches = @{
+									$QPUser.qpId = @{
+										autoMatch = $false
+										displayName = $QPUser.displayName
+										id = "$($Related_ATUser.id)"
+										name = "$($Related_ATUser.firstName) $($Related_ATUser.lastName)"
+										_id = $QPUser.qpId
+									}
+								}
+								searchText = ""
+								userType = "standard"
+							}
+		
+							$Params = @{
+								Method = "Post"
+								Uri = "$($QP_BaseURI)integrations/accounts/matches/createjob"
+								Body = ($Body | ConvertTo-Json -Depth 10)
+								ContentType = "application/json"
+								Headers = $Headers
+								WebSession = $QPWebSession
+							}
+		
+							$AutoUpdated = $false
+							try {
+								Write-Output "Creating new AT match: $($QPUser.displayName) to $($Related_ATUser.firstName) $($Related_ATUser.lastName)"
+								$Response = Invoke-RestMethod @Params
+								Start-Sleep -Seconds 1
+								if ($Response -and $Response.message -like "Matching Changes Submitted") {
+									$Updates++
+									$AutoUpdated = $true
+								}
+							} catch {
+								$AutoUpdated = $false
+								Start-Sleep -Seconds 3
+							}
+		
+							if (!$AutoUpdated) {
+								# Auto update did not work, send an email
+								$Suggestion = "$($Related_ATUser.firstName) $($Related_ATUser.lastName) ($($Related_ATUser.id))"
+								$QPFixes.Add([PSCustomObject]@{
+									Company = $Organization.QP.name
+									id = $QPUser.qpId
+									Name = $QPUser.displayName
+									FixType = "Manual AT Match Required, automatch failed: $($Suggestion) [inactive AT account]"
+								})
+							}
+							$CreateNew = $false
+						}
+					}
+				}
+				
+				if ($CreateNew -and (Get-Date $QPUser.createdAt) -lt (Get-Date).AddDays(-7) -and $QPUser.displayName) {
+					# If the contact is older than 7 days and we haven't found any inactive matches, make a new contact
+					$NewATContact = [PSCustomObject]@{
+						firstName = ""
+						lastName = ""
+						emailAddress = ""
+						mobilePhone = ""
+						companyID = $Organization.AT.id
+						isActive = 1
+					}
+
+					$NameParts = $QPUser.displayName -split " "
+					$FirstName =  ($NameParts[0..([math]::Max($NameParts.Count - 2, 0))] -join " ")
+					$LastName = if ($NameParts.Count -gt 1) { $NameParts[-1] } else { "." }
+					if ($LastName -eq "." -and $FirstName.Length -gt 20) {
+						$LastName = $FirstName.substring(20)
+					}
+					$FirstName = $FirstName.substring(0, [System.Math]::Min(20, $FirstName.Length))
+					$LastName = $LastName.substring(0, [System.Math]::Min(20, $LastName.Length))
+
+					$NewATContact.firstName = $FirstName
+					$NewATContact.lastName = $LastName
+					$NewATContact.emailAddress = $QPUser.email
+					$NewATContact.mobilePhone = $QPUser.phoneNumber
+
+					if ($QPUser.email -and $QPUser.email.Length -gt 50) {
+						continue :userLoop
+					}
+
+					$Result = New-AutotaskAPIResource -Resource CompanyContactsChild -ParentID $Organization.AT.id -Body $NewATContact
+
+					if ($Result -and $Result.itemId) {
+						# Link new AT Contact to QP user
+						$Headers = @{
+							Integration = "dattoAutoTask"
+						}
+						$Body = @{
+							allSelected = $false
+							customerId = $Organization.QP.id
+							excludedIds = @()
+							includedIds = @()
+							integrationType = "dattoAutoTask"
+							matchType = "ALL"
+							matches = @{
+								$QPUser.qpId = @{
+									autoMatch = $false
+									displayName = $QPUser.displayName
+									id = "$($Result.itemId)"
+									name = "$($QPUser.displayName)"
+									_id = $QPUser.qpId
+								}
+							}
+							searchText = ""
+							userType = "standard"
+						}
+	
+						$Params = @{
+							Method = "Post"
+							Uri = "$($QP_BaseURI)integrations/accounts/matches/createjob"
+							Body = ($Body | ConvertTo-Json -Depth 10)
+							ContentType = "application/json"
+							Headers = $Headers
+							WebSession = $QPWebSession
+						}
+	
+						$AutoUpdated = $false
+						try {
+							$Response = Invoke-RestMethod @Params
+							Start-Sleep -Seconds 1
+							if ($Response -and $Response.message -like "Matching Changes Submitted") {
+								Write-Output "Created new AT contact and matched: $($QPUser.displayName)"
+								$Updates++
+								$AutoUpdated = $true
+							}
+						} catch {
+							$AutoUpdated = $false
+							Start-Sleep -Seconds 3
+						}
+	
+						if (!$AutoUpdated) {
+							# Auto update did not work, send an email
+							$Suggestion = "$($FirstName) $($LastName) ($($Result.itemId))"
+							$QPFixes.Add([PSCustomObject]@{
+								Company = $Organization.QP.name
+								id = $QPUser.qpId
+								Name = $QPUser.displayName
+								FixType = "Created new AT Contact but QP matching failed: $($Suggestion)"
+							})
+						}
 					}
 				}
 			}
