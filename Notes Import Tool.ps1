@@ -251,13 +251,35 @@ if ($Table) {
 		while ($FullConfigurationsList.links.next) {
 			$i++
 			$Configurations_Next = Get-ITGlueConfigurations -page_size "1000" -page_number $i -organization_id $OrgID
+			if (!$Configurations_Next -or $Configurations_Next.Error) {
+				# We got an error querying configurations, wait and try again
+				Start-Sleep -Seconds 2
+				$Configurations_Next = Get-ITGlueConfigurations -page_size "1000" -page_number $i -organization_id $OrgID
+		
+				if (!$Configurations_Next -or $Configurations_Next.Error) {
+					Write-Error "An error occurred trying to get the existing configurations from ITG. Exiting..."
+					Write-Error $Configurations_Next.Error
+					exit 1
+				}
+			}
 			$FullConfigurationsList.data += $Configurations_Next.data
 			$FullConfigurationsList.links = $Configurations_Next.links
 		}
 		$FullConfigurationsList = $FullConfigurationsList.data
+
+		if (!$FullConfigurationsList) {
+			Write-Error "An error occurred trying to get the existing configurations from ITG. Exiting..."
+			exit 1
+		}
 	} elseif ($ImportType.Embedded -like "Contact") {
 		Write-Host "Downloading all ITG contacts"
-		$FullContactList = (Get-ITGlueContacts -page_size 1000 -organization_id $OrgID).data
+		$FullContactList = Get-ITGlueContacts -page_size 1000 -organization_id $OrgID
+		if (!$FullContactList -or $FullContactList.Error) {
+			Write-Error "An error occurred trying to get the existing contacts from ITG. Exiting..."
+			Write-Error $FullContactList.Error
+			exit 1
+		}
+		$FullContactList = ($FullContactList).data
 	}
 
 	# We now have a nicely formatted list of notes, lets query the ITG data for matches and start adding them

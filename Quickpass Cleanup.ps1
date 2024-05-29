@@ -4,7 +4,7 @@
 # Created Date: Tuesday, December 5th 2023, 3:56:52 pm
 # Author: Chris Jantzen
 # -----
-# Last Modified: Mon Jan 22 2024
+# Last Modified: Tue May 28 2024
 # Modified By: Chris Jantzen
 # -----
 # Copyright (c) 2023 Sea to Sky Network Solutions
@@ -495,6 +495,11 @@ if ((Test-Path -Path "./QPPasswordMatchingCache.json")) {
 # Get ITG flex asset type id
 $ITG_ADFilterID = (Get-ITGlueFlexibleAssetTypes -filter_name $ITG_ADFlexAssetName).data
 
+if (!$ITG_ADFilterID) {
+	Write-Error "Could not get the AD flex asset type ID. Exiting..."
+	exit 1
+}
+
 # Get event lists since the cache was last updated so we can query it for ITG/Autotask match changes
 if ($QPPasswordMatch_Cache.lastUpdated) {
 	$CacheLastUpdated = Get-Date $QPPasswordMatch_Cache.lastUpdated
@@ -728,12 +733,27 @@ foreach ($Organization in $Organizations) {
 		$i = 1
 		while ($ITGPasswords.links.next) {
 			$i++
-			$Passwords_Next = Get-ITGluePasswords -page_size 1000 -page_number $i -organization_id $Organization.ITG.id 
+			$Passwords_Next = Get-ITGluePasswords -page_size 1000 -page_number $i -organization_id $Organization.ITG.id
+			if (!$Passwords_Next -or $Passwords_Next.Error) {
+				# We got an error querying passwords, wait and try again
+				Start-Sleep -Seconds 2
+				$Passwords_Next = Get-ITGluePasswords -page_size 1000 -page_number $i -organization_id $Organization.ITG.id
+		
+				if (!$Passwords_Next -or $Passwords_Next.Error) {
+					Write-Error "An error occurred trying to get the existing passwords from ITG."
+					Write-Error $Passwords_Next.Error
+				}
+			}
 			$ITGPasswords.data += $Passwords_Next.data
 			$ITGPasswords.links = $Passwords_Next.links
 		}
 		if ($ITGPasswords -and $ITGPasswords.data) {
 			$ITGPasswords = $ITGPasswords.data
+		}
+
+		if (!$ITGPasswords) {
+			Write-Error "Could not find any passwords in ITG. Skipping..."
+			continue
 		}
 
 		# Find best match (if one exists)

@@ -4,7 +4,7 @@
 # Created Date: Tuesday, July 11th 2023, 3:50:36 pm
 # Author: Chris Jantzen
 # -----
-# Last Modified: Thu Dec 14 2023
+# Last Modified: Tue May 28 2024
 # Modified By: Chris Jantzen
 # -----
 # Copyright (c) 2023 Sea to Sky Network Solutions
@@ -77,6 +77,10 @@ if (!$ITGlueCompanies) {
 # Get the flexible asset IDs
 $FlexAssetID_AD = (Get-ITGlueFlexibleAssetTypes -filter_name $ITG_ADFlexAsset).data
 $FlexAssetID_Email = (Get-ITGlueFlexibleAssetTypes -filter_name $ITG_EmailFlexAsset).data
+if (!$FlexAssetID_AD -or !$FlexAssetID_Email) {
+	Write-Error "Could not get the AD or Email flex asset type ID. Exiting..."
+	exit 1
+}
 
 $QPMatchingFixes = [System.Collections.ArrayList]::new()
 

@@ -4,7 +4,7 @@
 # Created Date: Friday, November 3rd 2023, 11:40:33 am
 # Author: Chris Jantzen
 # -----
-# Last Modified: Fri Nov 03 2023
+# Last Modified: Tue May 28 2024
 # Modified By: Chris Jantzen
 # -----
 # Copyright (c) 2023 Sea to Sky Network Solutions
@@ -57,6 +57,10 @@ foreach ($Company in $ITGlueCompanies) {
 		for ($i = 2; $i -le $TotalPages; $i++) {
 			$Passwords.data += (Get-ITGluePasswords -organization_id $Company.id -page_size 1000 -page_number $i).data
 		}
+	}
+
+	if (!$Passwords) {
+		continue
 	}
 
 	# Filter out general passwords, computer bios/local admin passwords, and anything in the blacklist

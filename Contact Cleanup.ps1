@@ -171,6 +171,16 @@ foreach ($Company in $Companies) {
 	$ITGContacts = Get-ITGlueContacts -organization_id $Company.ITGID -page_size 1000
 	$ITGLocations = Get-ITGlueLocations -org_id $Company.ITGID
 
+	if ($ITGContacts.Error -or $ITGLocations.Error) {
+		Write-Error "An error occurred trying to get the existing contact or locations from ITG. Exiting..."
+		if ($ITGContacts.Error) {
+			Write-Error $ITGContacts.Error
+		} else {
+			Write-Error $ITGLocations.Error
+		}
+		exit 1
+	}
+
 	if ($ITGContacts -and $ITGContacts.data) {
 		$ITGContacts = $ITGContacts.data | Where-Object { $_.attributes.'psa-integration' -ne 'disabled' }
 	}

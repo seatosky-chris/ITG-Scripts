@@ -154,7 +154,7 @@ if ($QP_Login.Email) {
 	while ($attempt -ge 0 -and !$QPAuthResponse) {
 		if ($attempt -eq 0) {
 			# Already tried 10x, lets give up and exit the script
-			Write-Error "Could not authenticate with QuickPass. Please verify the credentials and try again."
+			Write-PSFMessage -Level Error -Message "Could not authenticate with QuickPass. Please verify the credentials and try again."
 		}
 
 		if ($QP_Login.MFA_Secret) {
@@ -345,8 +345,16 @@ if ((Test-Path -Path "./QPPasswordMatchingCache.json")) {
 # Get the flexible asset IDs
 $FlexAssetID_AD = (Get-ITGlueFlexibleAssetTypes -filter_name $ITG_ADFlexAsset).data
 $FlexAssetID_Email = (Get-ITGlueFlexibleAssetTypes -filter_name $ITG_EmailFlexAsset).data
+if (!$FlexAssetID_AD -or !$FlexAssetID_Email) {
+	Write-PSFMessage -Level Error -Message "Could not get the AD or Email flex asset type ID. Exiting..."
+	exit 1
+}
 
 $PasswordCategories = (Get-ITGluePasswordCategories).data
+if (!$PasswordCategories) {
+	Write-PSFMessage -Level Error -Message "Could not get the password categories from ITG. Exiting..."
+	exit 1
+}
 
 $QPMatchingFixes = [System.Collections.ArrayList]::new()
 $QPUsersByOrg = @{}
@@ -1100,16 +1108,6 @@ foreach ($Company in $ITGlueCompanies) {
 
 									if ($AutoUpdated) {
 										Write-PSFMessage -Level Verbose -Message "Updated QP Matching (after duplicate deletion): '$($Password.attributes.name)' (Link: $($Password.attributes.'resource-url')) - in favour of: $(@($RelatedPasswords.attributes.'resource-url') -join ", ")"
-
-										# Temporary - for now sending an email to check on these auto matching updates
-										$QPMatchingFixes.Add([PSCustomObject]@{
-											Company = $Company.attributes.name
-											id = $Password.id
-											Name = $Password.attributes.name
-											Link = $Password.attributes.'resource-url'
-											Related = @($RelatedPasswords.attributes.'resource-url') -join " "
-											FixType = "Duplicate - Deleted. Auto updated QP matching. Please verify."
-										})
 									}
 								}
 							}
