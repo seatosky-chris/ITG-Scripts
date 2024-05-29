@@ -271,8 +271,7 @@ foreach ($Company in $Companies) {
 			}
 
 			if ($ChangesMade) {
-				$Changes += $ContactUpdate
-				Set-AutotaskAPIResource -Resource CompanyContactsChild -ID $Contact.id -body $ContactUpdate
+				Set-AutotaskAPIResource -Resource CompanyContactsChild -ParentId $Company.AutotaskID -body $ContactUpdate
 			}
 		}
 	}
@@ -340,7 +339,7 @@ foreach ($Company in $Companies) {
 		}
 
 		if ($ChangesMade) {
-			Set-AutotaskAPIResource -Resource CompanyContactsChild -ID $Contact.id -body $ContactUpdate
+			Set-AutotaskAPIResource -Resource CompanyContactsChild -ParentId $Company.AutotaskID -body $ContactUpdate
 		}
 	}
 
