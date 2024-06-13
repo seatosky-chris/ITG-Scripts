@@ -31,6 +31,8 @@ This script is used to cleanup passwords in Quickpass and to setup default setti
 
 These are the main things the cleanup will attempt to fix:
 - Updates password matches between Quickpass and ITGlue/Autotask for any unmatched passwords
+  - If the only matching Autotask contact is inactive, it will active this contact and link it to the QP password
+  - If a matching Autotask contact is missing, it will create a new Autotask contact and match it to the QP password (only after the password has existed in QP for a minimum of 7 days)
 - Alerts on any companies that are not matched with ITG/Autotask
 - Updates phone numbers in QP from Autotask contacts (will overwrite from ITG the first time unless the user answered an onboarding email)
   - If not updating from Autotask, it will clean up the phone number if it doesn't properly start with the country code
