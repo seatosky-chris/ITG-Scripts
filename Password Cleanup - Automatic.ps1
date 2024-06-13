@@ -467,6 +467,9 @@ function Get-PasswordCategory ($PasswordName, $DefaultCategory = $false, $ForceT
 # $CurITGPassword - the ITG password we are trying to find in QP, it will look for the QP user matched with this password currently
 # $RelatedITGPassword - optional, any related or new password that we can also use the info from for searching, this password is not currently matched to the QP user
 function Get-QPUserFromITG ($QPCustomerID, $CurITGPassword, $RelatedITGPassword = $false) {
+	if (!$RelatedITGPassword) {
+		$RelatedITGPassword = $CurITGPassword
+	}
 	# Get all users for this customer (from the cache if possible, if not, live query then cache)
 	if ($QPUsersByOrg.$QPCustomerID -and ($QPUsersByOrg.$QPCustomerID | Measure-Object).Count -gt 0) {
 		$QP_EndUsers = $QPUsersByOrg.$QPCustomerID
@@ -504,8 +507,14 @@ function Get-QPUserFromITG ($QPCustomerID, $CurITGPassword, $RelatedITGPassword 
 	}
 
 	# Get possible matching users
-	$CurUsername = $CurITGPassword.attributes.username.Replace("*", "").Replace("?", "").Replace("[", "").Replace("]", "")
-	$RelatedUsername = $RelatedITGPassword.attributes.username.Replace("*", "").Replace("?", "").Replace("[", "").Replace("]", "")
+	$CurUsername = $false
+	$RelatedUsername = $false
+	if ($CurITGPassword.attributes.username) {
+		$CurUsername = $CurITGPassword.attributes.username.Replace("*", "").Replace("?", "").Replace("[", "").Replace("]", "")
+	}
+	if ($RelatedITGPassword.attributes.username) {
+		$RelatedUsername = $RelatedITGPassword.attributes.username.Replace("*", "").Replace("?", "").Replace("[", "").Replace("]", "")
+	}
 	if (!$CurUsername) {
 		$CurUsername = "THIS WILL NOT MATCH"
 	}
@@ -1194,20 +1203,70 @@ foreach ($Company in $ITGlueCompanies) {
 			$LogChanges = ""
 
 			if (($Password.attributes.name -like "AD *" -or $Password.attributes.name -like "AD-*" -or $Password.attributes.name -like "* AD *") -and $Password.attributes.name -notlike "*Azure AD*") {
+				$NewCategoryID = $false
+				$UpdatedPassword = @{
+					type = "passwords"
+					attributes = @{
+					}
+				}
+
 				if (!$Password.attributes.'password-category-name' -or $Password.attributes.'password-category-name' -like "Email Account / O365 User" -or $Password.attributes.'password-category-id' -eq $PasswordCategoryIDs.Email) {
 					# Update AD category
 					$NewCategoryID = Get-PasswordCategory -PasswordName $Password.attributes.name -DefaultCategory $DefaultCategory
 
 					if ($Password.attributes.'password-category-id' -ne $NewCategoryID) {
-						$UpdatedPassword = @{
-							type = "passwords"
-							attributes = @{
-								'password-category-id' = $NewCategoryID
-							}
-						}
-
+						$UpdatedPassword.attributes.'password-category-id' = $NewCategoryID
 						$LogChanges = "Category - $($Password.attributes.'password-category-name') to $(Get-PasswordCategoryNameByID -CategoryID $NewCategoryID)"
 					}
+				}
+
+				if (
+					$Password.attributes.archived -eq $false -and
+					(($NewCategoryID -and $NewCategoryID -eq $PasswordCategoryIDs.AD) -or (!$NewCategoryID -and $Password.attributes.'password-category-id' -eq $PasswordCategoryIDs.AD)) -and 
+					$Password.attributes.name -like "AD & O365*" -and $Password.attributes.notes -notlike "*Email:*"
+				) {
+					# Add the related email address into the passwords notes
+					$OrgMatch = $QPToITGCustomers | Where-Object { $_.ITG.id -eq $Company.id }
+					if ($OrgMatch -and $OrgMatch.QP.ID) {
+						$QPCustomerID = $OrgMatch.QP.ID
+						$QPUsers = Get-QPUserFromITG -QPCustomerID $QPCustomerID -CurITGPassword $Password
+
+						if (($QPUsers | Measure-Object).Count -gt 1) {
+							$QPUsers = $QPUsers | Where-Object { $_.userPrincipalName -eq $Password.attributes.username }
+						}
+						if (($QPUsers | Measure-Object).Count -gt 1) {
+							$QPUsers = $QPUsers | Select-Object -First 1
+						}
+
+						if ($QPUsers) {
+							$NewNotes = $Password.attributes.notes
+							if ($LogChanges) { $LogChanges += ", " }
+
+							if ($NewNotes -like "*$($QPUsers.email)*") {
+								$NewNotes = $NewNotes -replace $QPUsers.email, "Email: $($QPUsers.email)"
+								$LogChanges += "Notes - Updated Email Address $($QPUsers.email)"
+							} else {
+								if ($NewNotes) { $NewNotes += "`n" }
+								$NewNotes += "Email: $($QPUsers.email)"
+								$LogChanges += "Notes - Added Email Address $($QPUsers.email)"
+							}
+
+							$UpdatedPassword.attributes.'notes' = $NewNotes
+						} else {
+							$QPMatchingFixes.Add([PSCustomObject]@{
+								Company = $Company.attributes.name
+								id = $Password.id
+								Name = $Password.attributes.name
+								Link = $Password.attributes.'resource-url'
+								Related = ""
+								FixType = "Notes - Could not find email address to add"
+							})
+						}
+					}
+				}
+
+				if ($UpdatedPassword.attributes.count -eq 0) {
+					$UpdatedPassword = $false
 				}
 			} elseif (
 				($Password.attributes.name -like "O365 *" -or $Password.attributes.name -like "* O365 *" -or $Password.attributes.name -like "O365-*" -or $Password.attributes.name -like "* O365-*" -or
