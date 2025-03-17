@@ -1,25 +1,5 @@
 #Requires -RunAsAdministrator
 
-# See if they want to check against O365
-Write-Host "Would you like to check against Office 365 as well? (Default is No)" -ForegroundColor 'Yellow'
-$Readhost = Read-Host " (Y / N)"
-$CheckO365 = $false
-Switch ($Readhost) {
-	Y {$CheckO365 = $true}
-	default {$CheckO365 = $false}
-}
-
-# Check against O365
-if ($CheckO365) {
-	Connect-AzureAD
-	Connect-MsolService
-
-	if (!Get-MsolUser) {
-		Write-Host "Could not connect to O365." -ForegroundColor "red"
-		$CheckO365 = $false
-	}
-}
-
 # Get the csv file with the usernames
 Add-Type -AssemblyName System.Windows.Forms
 $OpenFileDialog = New-Object System.Windows.Forms.OpenFileDialog -Property @{ 
